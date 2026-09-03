@@ -1,0 +1,64 @@
+# ============================================
+# RBAC Role Configuration
+# ============================================
+
+roles:
+  admin:
+    display_name: "Administrator"
+    departments: ["all"]
+    document_types: ["all"]
+    permissions:
+      write: true
+      execute_code: true
+      generate_documents: true
+      admin: true
+
+  engineering:
+    display_name: "Engineering"
+    departments: ["engineering", "operations", "public"]
+    document_types: ["inspection_report", "sop", "pid", "specification", "manual"]
+    permissions:
+      write: true
+      execute_code: true
+      generate_documents: true
+      admin: false
+
+  finance:
+    display_name: "Finance"
+    departments: ["finance", "procurement", "public"]
+    document_types: ["budget", "invoice", "purchase_order", "financial_report"]
+    permissions:
+      write: false
+      execute_code: false
+      generate_documents: true
+      admin: false
+
+  procurement:
+    display_name: "Procurement"
+    departments: ["procurement", "finance", "public"]
+    document_types: ["purchase_order", "vendor_report", "contract", "invoice"]
+    permissions:
+      write: true
+      execute_code: false
+      generate_documents: true
+      admin: false
+
+  hr:
+    display_name: "Human Resources"
+    departments: ["hr", "public"]
+    document_types: ["policy", "compliance", "training"]
+    permissions:
+      write: false
+      execute_code: false
+      generate_documents: true
+      admin: false
+
+  operations:
+    display_name: "Operations"
+    departments: ["operations", "engineering", "public"]
+    document_types: ["inspection_report", "sop", "maintenance_log", "telemetry"]
+    permissions:
+      write: true
+      execute_code: true
+      generate_documents: true
+      admin: false

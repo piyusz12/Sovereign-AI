@@ -1,0 +1,27 @@
+# ============================================
+# LiteLLM Configuration — Phase 24
+# ============================================
+# Dynamic Expertise Broker — hides backend complexity from the agent
+
+model_list:
+  - model_name: "sovereign-reasoning"
+    litellm_params:
+      model: "ollama/qwen3:14b"
+      api_base: "http://localhost:11434"
+
+  - model_name: "sovereign-coding"
+    litellm_params:
+      model: "ollama/qwen2.5-coder:7b"
+      api_base: "http://localhost:11434"
+
+  - model_name: "sovereign-vision"
+    litellm_params:
+      model: "ollama/qwen3-vl:8b"
+      api_base: "http://localhost:11434"
+
+general_settings:
+  master_key: "sk-local-sovereign-key"
+
+litellm_settings:
+  drop_params: true
+  set_verbose: false

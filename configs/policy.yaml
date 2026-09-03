@@ -1,0 +1,71 @@
+# ============================================
+# Agentic Action Firewall — Policy Rules
+# ============================================
+
+actions:
+  # ALLOWED — safe local operations
+  read_file:
+    decision: "allowed"
+    reason: "Reading files is safe"
+
+  write_file:
+    decision: "allowed"
+    reason: "Writing to output directory"
+
+  list_files:
+    decision: "allowed"
+    reason: "Listing files is safe"
+
+  search_documents:
+    decision: "allowed"
+    reason: "Internal document search"
+
+  calculate:
+    decision: "allowed"
+    reason: "Math operations are safe"
+
+  run_python:
+    decision: "allowed"
+    reason: "Sandboxed Docker execution"
+
+  create_docx:
+    decision: "allowed"
+    reason: "Document generation"
+
+  create_xlsx:
+    decision: "allowed"
+    reason: "Spreadsheet generation"
+
+  create_pptx:
+    decision: "allowed"
+    reason: "Presentation generation"
+
+  inspect_image:
+    decision: "allowed"
+    reason: "Local vision model analysis"
+
+  # APPROVAL REQUIRED — destructive actions
+  delete_file:
+    decision: "approval_required"
+    reason: "Destructive action — requires approval"
+
+  modify_config:
+    decision: "approval_required"
+    reason: "System configuration change"
+
+  # BLOCKED — sovereignty violations
+  send_external:
+    decision: "blocked"
+    reason: "SOVEREIGNTY VIOLATION — no external network"
+
+  network_request:
+    decision: "blocked"
+    reason: "SOVEREIGNTY VIOLATION — no external network"
+
+  install_package:
+    decision: "blocked"
+    reason: "No runtime package installation"
+
+  access_internet:
+    decision: "blocked"
+    reason: "SOVEREIGNTY VIOLATION — zero egress enforced"

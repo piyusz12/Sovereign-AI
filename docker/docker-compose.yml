@@ -1,0 +1,66 @@
+# ============================================
+# Sovereign AI Workbench — Docker Compose
+# ============================================
+# All services run locally. No external network access.
+# GPU access through WSL2 backend.
+
+version: "3.8"
+
+services:
+  # ── Ollama — Local LLM Inference ────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: sovereign-ollama
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    # CRITICAL: No external network access needed after model pull
+    # Models are pulled once, then served locally
+
+  # ── Qdrant — Vector Database ────────────────────────────────────
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: sovereign-qdrant
+    ports:
+      - "127.0.0.1:6333:6333"  # REST
+      - "127.0.0.1:6334:6334"  # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    restart: unless-stopped
+
+  # ── Backend API ─────────────────────────────────────────────────
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    container_name: sovereign-backend
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ../data:/app/data
+      - ../configs:/app/configs
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+    depends_on:
+      - ollama
+      - qdrant
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
+    name: sovereign-ollama-data
+  qdrant_data:
+    name: sovereign-qdrant-data

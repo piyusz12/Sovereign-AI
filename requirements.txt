@@ -1,0 +1,46 @@
+# ============================================
+# Sovereign AI Workbench — Dependencies
+# ============================================
+
+# --- Core API ---
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+python-dotenv>=1.0.0
+python-multipart>=0.0.6
+httpx>=0.24.0
+requests>=2.31.0
+
+# --- Agent Framework ---
+langgraph>=0.2.0
+langchain>=0.3.0
+langchain-community>=0.3.0
+
+# --- Vector Database ---
+qdrant-client>=1.7.0
+
+# --- Document Processing ---
+# docling>=0.1.0  # Install separately — has complex deps
+# paddleocr>=2.7.0  # Install separately — needs PaddlePaddle
+
+# --- Document Generation ---
+pandas>=2.1.0
+openpyxl>=3.1.0
+python-docx>=1.0.0
+python-pptx>=0.6.21
+
+# --- Embeddings / ML ---
+sentence-transformers>=2.2.0
+
+# --- Observability ---
+opentelemetry-api>=1.20.0
+opentelemetry-sdk>=1.20.0
+
+# --- Security ---
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+
+# --- Utilities ---
+pyyaml>=6.0.0
+rich>=13.0.0

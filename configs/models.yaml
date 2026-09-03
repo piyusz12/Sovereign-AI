@@ -1,0 +1,65 @@
+# ============================================
+# Sovereign AI Workbench — Model Registry Config
+# ============================================
+# Single-GPU discipline: only ONE heavy model loaded at a time
+
+models:
+  reasoning:
+    name: "Qwen3-14B"
+    provider: "ollama"
+    model_id: "qwen3:14b"
+    category: "reasoning"
+    quantization: "4-bit"
+    context_length: 32768
+    vram_required_mb: 7000
+    is_heavy: true
+    priority: 1
+
+  coding:
+    name: "Qwen2.5-Coder-7B"
+    provider: "ollama"
+    model_id: "qwen2.5-coder:7b"
+    category: "coding"
+    quantization: "4-bit"
+    context_length: 16384
+    vram_required_mb: 5000
+    is_heavy: true
+    priority: 2
+
+  vision:
+    name: "Qwen3-VL-8B"
+    provider: "ollama"
+    model_id: "qwen3-vl:8b"
+    category: "vision"
+    quantization: "4-bit"
+    context_length: 8192
+    vram_required_mb: 6000
+    is_heavy: true
+    priority: 3
+
+  embedding:
+    name: "Qwen3-Embedding-0.6B"
+    provider: "ollama"
+    model_id: "qwen3-embedding:0.6b"
+    category: "embedding"
+    quantization: "fp16"
+    context_length: 8192
+    vram_required_mb: 800
+    is_heavy: false
+    priority: 1
+
+  reranker:
+    name: "Qwen3-Reranker-0.6B"
+    provider: "ollama"
+    model_id: "qwen3-reranker:0.6b"
+    category: "reranker"
+    quantization: "fp16"
+    context_length: 8192
+    vram_required_mb: 800
+    is_heavy: false
+    priority: 2
+
+gpu:
+  total_vram_mb: 8192
+  max_heavy_models: 1
+  model: "RTX 4060 Laptop"

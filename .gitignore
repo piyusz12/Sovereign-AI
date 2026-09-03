@@ -1,0 +1,63 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+env/
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Docker
+docker-compose.override.yml
+
+# Data (keep structure, ignore content)
+data/documents/**/*.pdf
+data/documents/**/*.xlsx
+data/documents/**/*.docx
+data/documents/**/*.pptx
+data/documents/**/*.png
+data/documents/**/*.jpg
+data/processed/
+data/embeddings/
+data/output/
+!data/**/.gitkeep
+!data/**/README.md
+
+# Models (downloaded locally)
+models/**/*.bin
+models/**/*.gguf
+models/**/*.safetensors
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Test artifacts
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Node (frontend)
+node_modules/
+.next/
+out/
+
+# Monitoring captures
+monitoring/captures/

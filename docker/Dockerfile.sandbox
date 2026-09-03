@@ -1,0 +1,15 @@
+# Minimal Python sandbox — no network, no extra packages
+# Used for executing AI-generated code safely
+FROM python:3.12-slim
+
+# Only add safe data-science packages
+RUN pip install --no-cache-dir \
+    pandas \
+    openpyxl \
+    numpy
+
+WORKDIR /workspace
+
+# Non-root user for additional security
+RUN useradd -m sandbox
+USER sandbox

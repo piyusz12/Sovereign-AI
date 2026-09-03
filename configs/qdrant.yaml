@@ -1,0 +1,31 @@
+# ============================================
+# Qdrant Collection Configuration
+# ============================================
+
+collections:
+  sovereign_documents:
+    vectors:
+      size: 1024  # Qwen3-Embedding-0.6B dimension
+      distance: "Cosine"
+    payload_schema:
+      document_id:
+        type: "keyword"
+        index: true
+      department:
+        type: "keyword"
+        index: true
+      access_level:
+        type: "keyword"
+        index: true
+      document_type:
+        type: "keyword"
+        index: true
+      page:
+        type: "integer"
+        index: true
+      filename:
+        type: "keyword"
+        index: false
+      text:
+        type: "text"
+        index: true  # For full-text search fallback
