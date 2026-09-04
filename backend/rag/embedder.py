@@ -14,9 +14,8 @@ import httpx
 
 logger = logging.getLogger("sovereign.rag.embedder")
 
-# Default config
-DEFAULT_EMBEDDING_MODEL = "qwen3-embedding:0.6b"
-DEFAULT_EMBEDDING_DIM = 1024
+DEFAULT_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
+DEFAULT_EMBEDDING_DIM = 384
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 
 
@@ -35,6 +34,8 @@ class EmbeddingService:
         self.model = model
         self.dimension = dimension
         self.base_url = base_url
+        self._local_model = None
+        self._local_model_loaded = False
 
     async def embed_text(self, text: str) -> list[float]:
         """Generate embedding for a single text."""
@@ -44,19 +45,40 @@ class EmbeddingService:
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
         """Generate embeddings for a batch of texts."""
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            # 1. Try external Ollama API first
+            async with httpx.AsyncClient(timeout=5.0) as client:
                 response = await client.post(
                     f"{self.base_url}/api/embed",
                     json={"model": self.model, "input": texts},
                 )
                 response.raise_for_status()
                 data = response.json()
-                return data.get("embeddings", [])
-        except httpx.ConnectError:
-            logger.error("Cannot connect to Ollama at %s", self.base_url)
+                if "embeddings" in data:
+                    return data["embeddings"]
+        except Exception as e:
+            logger.debug("Ollama embedding failed or unreachable: %s", e)
+            
+        # 2. Fallback to local sentence-transformers
+        return await self._call_local_embedder(texts)
+        
+    async def _call_local_embedder(self, texts: list[str]) -> list[list[float]]:
+        try:
+            import asyncio
+            from sentence_transformers import SentenceTransformer
+            
+            if not self._local_model_loaded:
+                logger.info("Loading local Embedding model: %s", self.model)
+                self._local_model = SentenceTransformer(self.model)
+                self._local_model_loaded = True
+                
+            # Offload heavy ML inference to thread pool
+            embeddings = await asyncio.to_thread(self._local_model.encode, texts, convert_to_numpy=True)
+            return embeddings.tolist()
+        except ImportError:
+            logger.warning("sentence-transformers not installed. Embedding disabled.")
             return [[0.0] * self.dimension for _ in texts]
         except Exception as e:
-            logger.error("Embedding failed: %s", e)
+            logger.error("Local embedding failed: %s", e)
             return [[0.0] * self.dimension for _ in texts]
 
     async def embed_document_chunks(

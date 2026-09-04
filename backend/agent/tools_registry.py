@@ -78,6 +78,11 @@ async def _execute_search(query: str) -> ToolExecution:
             title = doc.get("filename") or doc.get("title") or f"Doc {i}"
             score = doc.get("_rerank_score", 0.0)
             text = doc.get("text", "")
+            
+            # Truncate to prevent context window overflow (800 chars max per doc)
+            if len(text) > 800:
+                text = text[:800] + "\n... (truncated to save context)"
+                
             output += f"--- {title} (Relevance: {score:.2f}) ---\n{text}\n\n"
             
         return ToolExecution("document_reasoning", True, output, "")

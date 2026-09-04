@@ -230,23 +230,43 @@ class HybridRetriever:
             return []
 
         try:
-            from qdrant_client.models import Filter, FieldCondition, MatchValue
+            from qdrant_client.models import Filter, FieldCondition, MatchValue, MatchAny
 
             # Build RBAC filter
-            filter_conditions = []
+            must_conditions = []
+            
+            # 1. Role-based access level
             if user_role and user_role != "admin":
                 role_access = {
                     "engineering": ["public", "engineering"],
                     "finance": ["public", "finance"],
                     "operations": ["public", "operations", "engineering"],
+                    "hr": ["public", "hr"],
+                    "procurement": ["public", "procurement"],
                 }
                 allowed = role_access.get(user_role, ["public"])
-                # Qdrant filter would go here
-                pass
+                must_conditions.append(
+                    FieldCondition(
+                        key="access_level",
+                        match=MatchAny(any=allowed)
+                    )
+                )
+
+            # 2. Department filter
+            if department_filter:
+                must_conditions.append(
+                    FieldCondition(
+                        key="department",
+                        match=MatchValue(value=department_filter)
+                    )
+                )
+
+            query_filter = Filter(must=must_conditions) if must_conditions else None
 
             results = self._qdrant_client.search(
                 collection_name=collection,
                 query_vector=query_embedding,
+                query_filter=query_filter,
                 limit=top_k,
             )
 
