@@ -17,8 +17,10 @@ from fastapi.responses import JSONResponse
 from backend.logging_config import setup_logging
 from backend.settings import settings
 from backend.api.routes import router as api_router
+from backend.api.openai_routes import openai_router
 from backend.api.health import probe_all
 from backend.api.middleware import audit_logger, sovereignty_enforcer
+from backend.router.model_registry import model_registry
 
 logger = logging.getLogger("sovereign.api")
 
@@ -33,6 +35,13 @@ async def lifespan(app: FastAPI):
     logger.info("  Zero external network access")
     logger.info("  Data sovereignty enforced")
     logger.info("  Listening on %s:%d", settings.app_host, settings.app_port)
+
+    # Auto-warm default model if Ollama is running
+    try:
+        logger.info("Auto-warming default reasoning model...")
+        await model_registry.load_model("reasoning")
+    except Exception as e:
+        logger.warning("Failed to warm up default model: %s", e)
 
     yield
 
@@ -169,3 +178,4 @@ async def internal_error_handler(request: Request, exc):
 
 # Include API routes
 app.include_router(api_router, prefix="/api/v1")
+app.include_router(openai_router, prefix="/v1")

@@ -5,6 +5,8 @@ All endpoint definitions for the workbench API.
 Routes are wired to real backend components where available.
 
 Phase 4: Added streaming chat, model management endpoints, and live inference metrics.
+Phase 6: Added /classify endpoint for routing preview without inference.
+Phase 7: Added /code/generate endpoint for structured code generation.
 """
 
 import json
@@ -20,12 +22,19 @@ from pydantic import BaseModel, Field
 from backend.api.schemas import (
     ChatRequest,
     ChatResponse,
+    ClassifyRequest,
+    ClassifyResponse,
+    ClassificationSignalSchema,
+    CodeBlockSchema,
     CodeExecutionRequest,
     CodeExecutionResponse,
+    CodeGenerateRequest,
+    CodeGenerateResponse,
     GenerateRequest,
     GenerateResponse,
     ModelStatus,
     RouteInfo,
+    RoutingDecisionSchema,
     SearchRequest,
     SearchResponse,
     SystemStatus,
@@ -37,6 +46,7 @@ from backend.router.model_registry import model_registry
 from backend.router.task_classifier import task_classifier
 from backend.router.router import model_router
 from backend.router.ollama_client import ollama_client
+from backend.router.coding import extract_code_blocks
 from backend.api.health import probe_all
 from backend.settings import settings
 
@@ -135,6 +145,129 @@ async def chat_stream(request: ChatRequest):
             "Connection": "keep-alive",
             "X-Sovereign": "true",
         },
+    )
+
+
+# ── Classification (Phase 6) ───────────────────────────────────────────────────
+
+
+@router.post("/classify", response_model=ClassifyResponse)
+async def classify_input(request: ClassifyRequest):
+    """
+    Classify a user input and return the routing decision WITHOUT running
+    model inference. Shows which model would be selected and why.
+
+    This is the Dynamic Expertise Broker made visible — the frontend can
+    display "This would be routed to Qwen2.5-Coder-7B because..." before
+    the user commits to running the full inference.
+    """
+    try:
+        decision = await model_router.classify_only(
+            user_input=request.message,
+            has_image=request.has_image,
+            use_llm=request.use_llm,
+        )
+    except Exception as e:
+        logger.error("Classification failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Classification error: {e}")
+
+    # Build response with optional pattern explanation
+    explanation = task_classifier.explain(request.message)
+
+    # Convert signals to schema types
+    kw_signal = None
+    if decision.keyword_signal:
+        kw_signal = ClassificationSignalSchema(
+            source=decision.keyword_signal.source,
+            task_type=decision.keyword_signal.task_type,
+            model=decision.keyword_signal.model,
+            confidence=decision.keyword_signal.confidence,
+            reason=decision.keyword_signal.reason,
+            duration_ms=decision.keyword_signal.duration_ms,
+        )
+
+    llm_signal = None
+    if decision.llm_signal:
+        llm_signal = ClassificationSignalSchema(
+            source=decision.llm_signal.source,
+            task_type=decision.llm_signal.task_type,
+            model=decision.llm_signal.model,
+            confidence=decision.llm_signal.confidence,
+            reason=decision.llm_signal.reason,
+            duration_ms=decision.llm_signal.duration_ms,
+        )
+
+    return ClassifyResponse(
+        routing_decision=RoutingDecisionSchema(
+            task_type=decision.task_type,
+            model_category=decision.model_category,
+            model_name=decision.model_name,
+            confidence=decision.confidence,
+            reason=decision.reason,
+            used_llm=decision.used_llm,
+            total_classification_ms=decision.total_classification_ms,
+            keyword_signal=kw_signal,
+            llm_signal=llm_signal,
+            policy={
+                "llm_threshold": decision.policy_llm_threshold,
+                "prefer_llm": decision.policy_prefer_llm,
+            },
+        ),
+        explanation=explanation,
+    )
+
+
+# ── Code Generation (Phase 7) ─────────────────────────────────────────────────
+
+
+@router.post("/code/generate", response_model=CodeGenerateResponse)
+async def generate_code(request: CodeGenerateRequest):
+    """
+    Generate code using the specialized coder model (Qwen2.5-Coder-7B).
+
+    Returns structured code blocks extracted from the model response,
+    plus the raw response and routing metadata. This is the precursor
+    to the Phase 10 sandbox integration where generated code will be
+    executed in a Docker container.
+
+    Flow:
+        Prompt → Coder Model → Raw Response → Code Block Extraction → Structured Output
+    """
+    start = time.time()
+
+    try:
+        result = await model_router.generate_code(
+            prompt=request.prompt,
+            language=request.language,
+            context=request.context,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
+        )
+    except Exception as e:
+        logger.error("Code generation failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Code generation error: {e}")
+
+    duration_ms = round((time.time() - start) * 1000, 2)
+
+    return CodeGenerateResponse(
+        code_blocks=[
+            CodeBlockSchema(
+                language=b.language,
+                code=b.code,
+                description=b.description,
+                line_count=b.line_count,
+            )
+            for b in result.code_blocks
+        ],
+        raw_response=result.raw_response,
+        route=RouteInfo(
+            task_type=TaskType.CODING,
+            model=ModelName.QWEN25_CODER_7B,
+            reason="Forced to coder model for code generation",
+        ),
+        model_used=result.model_used,
+        duration_ms=duration_ms,
+        total_lines=result.total_lines,
     )
 
 

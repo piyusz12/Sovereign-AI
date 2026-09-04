@@ -206,3 +206,80 @@ class AuditEntry(BaseModel):
     documents: list[str] = Field(default_factory=list)
     result: str
     duration_ms: float
+
+
+# ── Phase 6: Classification Schemas ───────────────────────────────────────────
+
+
+class ClassifyRequest(BaseModel):
+    """Request to classify a user input without running inference."""
+    message: str = Field(..., min_length=1, max_length=10000)
+    has_image: bool = False
+    use_llm: bool = False  # Force LLM classification even for high-confidence matches
+
+
+class ClassificationSignalSchema(BaseModel):
+    """A single classification signal from keyword or LLM source."""
+    source: str  # "keyword" or "llm"
+    task_type: str
+    model: str
+    confidence: float
+    reason: str
+    duration_ms: float = 0.0
+
+
+class RoutingDecisionSchema(BaseModel):
+    """Full routing decision trace for UI display and audit."""
+    model_config = {"protected_namespaces": ()}
+
+    task_type: str
+    model_category: str
+    model_name: str
+    confidence: float
+    reason: str
+    used_llm: bool = False
+    total_classification_ms: float = 0.0
+    keyword_signal: Optional[ClassificationSignalSchema] = None
+    llm_signal: Optional[ClassificationSignalSchema] = None
+    policy: dict[str, Any] = Field(default_factory=dict)
+
+
+class ClassifyResponse(BaseModel):
+    """Response from the classify endpoint — routing decision without inference."""
+    routing_decision: RoutingDecisionSchema
+    explanation: Optional[dict[str, Any]] = None  # Detailed pattern breakdown
+    sovereign: bool = True
+
+
+# ── Phase 7: Code Generation Schemas ──────────────────────────────────────────
+
+
+class CodeBlockSchema(BaseModel):
+    """A single extracted code block."""
+    language: str = "python"
+    code: str
+    description: str = ""
+    line_count: int = 0
+
+
+class CodeGenerateRequest(BaseModel):
+    """Request to generate code via the coder model."""
+    prompt: str = Field(..., min_length=1, max_length=10000)
+    language: str = Field(default="python")
+    context: Optional[str] = None  # Additional context (e.g. file contents, requirements)
+    temperature: float = Field(default=0.3, ge=0.0, le=2.0)
+    max_tokens: int = Field(default=4096, ge=256, le=16384)
+
+
+class CodeGenerateResponse(BaseModel):
+    """Response from code generation with structured code blocks."""
+    model_config = {"protected_namespaces": ()}
+
+    code_blocks: list[CodeBlockSchema] = Field(default_factory=list)
+    raw_response: str
+    route: RouteInfo
+    model_used: str
+    duration_ms: float
+    sovereign: bool = True
+    total_lines: int = 0
+
