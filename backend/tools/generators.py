@@ -8,8 +8,10 @@ These are the tool wrappers; actual generation logic is in backend/generators/.
 from __future__ import annotations
 
 from typing import Any
+from pathlib import Path
 
 from backend.tools.base import BaseTool, ToolPermission
+from backend.generators.service import deliverable_service
 
 
 class CreateDocxTool(BaseTool):
@@ -26,10 +28,16 @@ class CreateDocxTool(BaseTool):
         )
 
     async def _run(self, title: str, content: dict, template: str = "default", **kwargs) -> Any:
-        # TODO Phase 20: Use backend.generators.docx_generator
+        filepath, error = await deliverable_service.create_and_validate_docx(
+            title=title, content=content, template=template
+        )
+        if error:
+            return {"status": "error", "error": error}
+            
         return {
-            "filename": f"{title.replace(' ', '_').lower()}.docx",
-            "status": "pending_implementation",
+            "filename": Path(filepath).name if filepath else f"{title}.docx",
+            "filepath": filepath,
+            "status": "success",
         }
 
 
@@ -47,10 +55,16 @@ class CreateXlsxTool(BaseTool):
         )
 
     async def _run(self, title: str, data: list[dict], **kwargs) -> Any:
-        # TODO Phase 20: Use backend.generators.xlsx_generator
+        filepath, error = await deliverable_service.create_and_validate_xlsx(
+            title=title, data=data
+        )
+        if error:
+            return {"status": "error", "error": error}
+            
         return {
-            "filename": f"{title.replace(' ', '_').lower()}.xlsx",
-            "status": "pending_implementation",
+            "filename": Path(filepath).name if filepath else f"{title}.xlsx",
+            "filepath": filepath,
+            "status": "success",
         }
 
 
@@ -68,8 +82,40 @@ class CreatePptxTool(BaseTool):
         )
 
     async def _run(self, title: str, slides: list[dict], **kwargs) -> Any:
-        # TODO Phase 20: Use backend.generators.pptx_generator
+        filepath, error = await deliverable_service.create_and_validate_pptx(
+            title=title, slides=slides
+        )
+        if error:
+            return {"status": "error", "error": error}
+            
         return {
-            "filename": f"{title.replace(' ', '_').lower()}.pptx",
-            "status": "pending_implementation",
+            "filename": Path(filepath).name if filepath else f"{title}.pptx",
+            "filepath": filepath,
+            "status": "success",
+        }
+
+class CreateCodePackageTool(BaseTool):
+    """Generate a ZIP code package."""
+
+    def __init__(self):
+        super().__init__(
+            name="create_code_package",
+            description="Generate a ZIP code package from working scripts",
+            permission=ToolPermission(
+                name="create_code_package",
+                allowed_roles=["admin", "engineering"],
+            ),
+        )
+
+    async def _run(self, title: str, files: dict[str, str], **kwargs) -> Any:
+        filepath, error = await deliverable_service.create_and_validate_code_package(
+            title=title, files=files
+        )
+        if error:
+            return {"status": "error", "error": error}
+            
+        return {
+            "filename": Path(filepath).name if filepath else f"{title}.zip",
+            "filepath": filepath,
+            "status": "success",
         }

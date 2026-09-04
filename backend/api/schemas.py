@@ -92,9 +92,9 @@ class SearchRequest(BaseModel):
 
 class GenerateRequest(BaseModel):
     """Document generation request."""
-    request_type: str = Field(..., description="Type: approval_note, report, analysis")
+    request_type: str = Field(..., description="Type: approval_note, report, analysis, code_package")
     source_data: dict[str, Any] = Field(default_factory=dict)
-    output_format: str = Field(default="docx", pattern="^(docx|xlsx|pptx)$")
+    output_format: str = Field(default="docx", pattern="^(docx|xlsx|pptx|zip)$")
     template: Optional[str] = None
 
 
@@ -164,11 +164,17 @@ class SearchResponse(BaseModel):
 
 
 class GenerateResponse(BaseModel):
-    """Response from document generation."""
+    """Response from generation endpoint."""
     filename: str
     file_path: str
     format: str
     pages: Optional[int] = None
+
+
+class WorkflowRequest(BaseModel):
+    """Request to trigger a flagship workflow."""
+    workflow_name: str = Field(..., description="E.g., 'inspection' or 'coding'")
+    inputs: dict[str, Any] = Field(default_factory=dict, description="Inputs like 'file_path' and 'query'")
 
 
 class CodeExecutionResponse(BaseModel):

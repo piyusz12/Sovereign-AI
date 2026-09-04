@@ -36,7 +36,10 @@ class RepairLoopResult:
     history: list = field(default_factory=list)  # list of dicts per attempt
 
 
-async def generate_and_verify(task_description: str, *, max_attempts: int = MAX_ATTEMPTS) -> RepairLoopResult:
+async def generate_and_verify(task_description: str, context: str = "", *, max_attempts: int = MAX_ATTEMPTS) -> RepairLoopResult:
+    if context:
+        task_description += f"\n\nHigh-level verification failures from previous attempts:\n{context}"
+
     history = []
     code = ""
     stdout = ""

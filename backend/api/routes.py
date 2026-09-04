@@ -15,7 +15,7 @@ import time
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, HTTPException, UploadFile, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -51,6 +51,7 @@ from backend.router.ollama_client import ollama_client
 from backend.router.coding import extract_code_blocks
 from backend.api.health import probe_all
 from backend.settings import settings
+from backend.security.dependencies import require_permission, get_current_user
 
 logger = logging.getLogger("sovereign.api.routes")
 
@@ -60,7 +61,7 @@ router = APIRouter()
 # ── Chat / Query ───────────────────────────────────────────────────────────────
 
 
-@router.post("/chat", response_model=ChatResponse)
+@router.post("/chat", response_model=ChatResponse, dependencies=[Depends(require_permission("ai.chat"))])
 async def chat(request: ChatRequest):
     """
     Main chat endpoint. Classifies the task, routes to the appropriate model,
@@ -114,7 +115,7 @@ async def chat(request: ChatRequest):
     )
 
 
-@router.post("/chat/stream")
+@router.post("/chat/stream", dependencies=[Depends(require_permission("ai.chat"))])
 async def chat_stream(request: ChatRequest):
     """
     Streaming chat endpoint. Returns Server-Sent Events (SSE) as tokens
@@ -159,7 +160,7 @@ async def chat_stream(request: ChatRequest):
 # ── Classification (Phase 6) ───────────────────────────────────────────────────
 
 
-@router.post("/classify", response_model=ClassifyResponse)
+@router.post("/classify", response_model=ClassifyResponse, dependencies=[Depends(require_permission("ai.chat"))])
 async def classify_input(request: ClassifyRequest):
     """
     Classify a user input and return the routing decision WITHOUT running
@@ -228,7 +229,7 @@ async def classify_input(request: ClassifyRequest):
 # ── Code Generation (Phase 7) ─────────────────────────────────────────────────
 
 
-@router.post("/code/generate", response_model=CodeGenerateResponse)
+@router.post("/code/generate", response_model=CodeGenerateResponse, dependencies=[Depends(require_permission("agent.execute_code"))])
 async def generate_code(request: CodeGenerateRequest):
     """
     Generate code using the specialized coder model (Qwen2.5-Coder-7B).
@@ -290,7 +291,7 @@ class ModelLoadRequest(BaseModel):
     )
 
 
-@router.post("/models/load")
+@router.post("/models/load", dependencies=[Depends(require_permission("model.configure"))])
 async def load_model(request: ModelLoadRequest):
     """
     Explicitly load a model into VRAM. If another heavy model is loaded,
@@ -329,7 +330,7 @@ async def load_model(request: ModelLoadRequest):
     }
 
 
-@router.post("/models/unload")
+@router.post("/models/unload", dependencies=[Depends(require_permission("model.configure"))])
 async def unload_model(request: ModelLoadRequest):
     """Explicitly unload a model from VRAM."""
     model_config = model_registry.get_model(request.category)
@@ -349,7 +350,7 @@ async def unload_model(request: ModelLoadRequest):
     }
 
 
-@router.get("/models/status")
+@router.get("/models/status", dependencies=[Depends(require_permission("all"))])
 async def models_status():
     """
     Real GPU status from Ollama ps + registry state.
@@ -368,7 +369,7 @@ async def models_status():
     }
 
 
-@router.get("/models/available")
+@router.get("/models/available", dependencies=[Depends(require_permission("all"))])
 async def list_available_models():
     """
     List all models available in Ollama (pulled and ready to use).
@@ -392,7 +393,7 @@ async def list_available_models():
 
 # ── Vision Endpoints (Phase 8) ────────────────────────────────────────────────
 
-@router.post("/vision/analyze", response_model=VisionAnalyzeResponse)
+@router.post("/vision/analyze", response_model=VisionAnalyzeResponse, dependencies=[Depends(require_permission("ai.vision"))])
 async def analyze_vision(request: VisionAnalyzeRequest):
     """
     Dedicated endpoint for vision analysis.
@@ -428,7 +429,7 @@ async def analyze_vision(request: VisionAnalyzeRequest):
 # ── Document Upload ────────────────────────────────────────────────────────────
 
 
-@router.post("/upload", response_model=UploadResponse)
+@router.post("/upload", response_model=UploadResponse, dependencies=[Depends(require_permission("document.upload"))])
 async def upload_document(
     file: UploadFile = File(...),
     department: Optional[str] = None,
@@ -489,7 +490,7 @@ async def upload_document(
 # ── RAG Search ─────────────────────────────────────────────────────────────────
 
 
-@router.post("/search", response_model=SearchResponse)
+@router.post("/search", response_model=SearchResponse, dependencies=[Depends(require_permission("rag.search"))])
 async def search_documents(request: SearchRequest):
     """
     Hybrid search: dense (Qdrant) + BM25 -> merge -> rerank -> top K.
@@ -542,25 +543,75 @@ async def search_documents(request: SearchRequest):
 
 
 # ── Document Generation ───────────────────────────────────────────────────────
+from backend.generators.service import deliverable_service
+import os
 
 
-@router.post("/generate", response_model=GenerateResponse)
+@router.post("/generate", response_model=GenerateResponse, dependencies=[Depends(require_permission("report.create"))])
 async def generate_document(request: GenerateRequest):
     """
     Generate enterprise documents (DOCX, XLSX, PPTX) from AI analysis.
     """
-    # TODO Phase 20: Implement document generators
+    output_format = request.output_format.lower()
+    title = request.source_data.get("title", f"Generated_{request.request_type}")
+    
+    filepath = ""
+    error = ""
+    if output_format == "docx":
+        filepath, error = await deliverable_service.create_and_validate_docx(
+            title=title, content=request.source_data, template=request.template
+        )
+    elif output_format == "xlsx":
+        filepath, error = await deliverable_service.create_and_validate_xlsx(
+            title=title,
+            data=request.source_data.get("data", []),
+            summary=request.source_data.get("summary")
+        )
+    elif output_format == "pptx":
+        filepath, error = await deliverable_service.create_and_validate_pptx(
+            title=title,
+            slides=request.source_data.get("slides", [])
+        )
+    elif output_format == "zip":
+        filepath, error = await deliverable_service.create_and_validate_code_package(
+            title=title,
+            files=request.source_data.get("files", {})
+        )
+        
+    if error:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=f"Deliverable Generation Failed: {error}")
+        
+    filename = os.path.basename(filepath) if filepath else f"generated.{output_format}"
+    
     return GenerateResponse(
-        filename=f"generated.{request.output_format}",
-        file_path=f"./data/output/generated.{request.output_format}",
-        format=request.output_format,
+        filename=filename,
+        file_path=filepath or f"./data/output/{filename}",
+        format=output_format,
     )
+
+
+# ── Workflows ────────────────────────────────────────────────────────────
+from backend.api.schemas import WorkflowRequest
+from backend.workflows.engine import workflow_engine
+
+@router.post("/workflows/run", dependencies=[Depends(get_current_user)])
+async def run_flagship_workflow(request: WorkflowRequest, current_user: dict = Depends(get_current_user)):
+    """
+    Execute a flagship SIH demo workflow.
+    """
+    trace = await workflow_engine.execute(
+        user_role=current_user["role"],
+        request_type=request.workflow_name,
+        inputs=request.inputs
+    )
+    return trace.model_dump()
 
 
 # ── Code Execution ────────────────────────────────────────────────────────────
 
 
-@router.post("/execute", response_model=CodeExecutionResponse)
+@router.post("/execute", response_model=CodeExecutionResponse, dependencies=[Depends(require_permission("agent.execute_code"))])
 async def execute_code(request: CodeExecutionRequest):
     """
     Execute code in a sandboxed Docker container.
@@ -612,35 +663,20 @@ async def login(request: LoginRequest):
 
 
 @router.get("/auth/me")
-async def get_current_user(token: str = ""):
+async def auth_me(current_user: dict = Depends(get_current_user)):
     """
     Decode a JWT token and return the current user.
-    Pass the token as a query parameter for simplicity in Phase 3.
     """
-    from backend.security.auth import decode_token, DEMO_USERS, User
-
-    if not token:
-        raise HTTPException(status_code=401, detail="Token required")
-
-    token_data = decode_token(token)
-    if not token_data or not token_data.username:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-
-    user_data = DEMO_USERS.get(token_data.username)
-    if not user_data:
-        raise HTTPException(status_code=404, detail="User not found")
-
     return {
-        "username": user_data["username"],
-        "role": user_data["role"],
-        "department": user_data["department"],
+        "username": current_user["username"],
+        "role": current_user["role"],
+        "department": current_user["department"],
     }
-
 
 # ── Admin Endpoints ───────────────────────────────────────────────────────────
 
 
-@router.get("/admin/models")
+@router.get("/admin/models", dependencies=[Depends(require_permission("all"))])
 async def list_models():
     """List all available models and their current status."""
     models = model_registry.list_models()
@@ -654,7 +690,7 @@ async def list_models():
     }
 
 
-@router.get("/admin/health")
+@router.get("/admin/health", dependencies=[Depends(require_permission("all"))])
 async def admin_health():
     """Detailed health check for all subsystems."""
     services = await probe_all(

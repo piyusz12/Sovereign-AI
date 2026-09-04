@@ -13,8 +13,11 @@ the graph.
 from __future__ import annotations
 
 import asyncio
+import base64
 import concurrent.futures
+import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable, Coroutine, Dict
 
 from backend.agent.code_repair_loop import generate_and_verify
@@ -47,8 +50,8 @@ def run_async_safely(coro: Coroutine[Any, Any, Any]) -> Any:
         return asyncio.run(coro)
 
 
-def _run_coding_tool(user_request: str) -> ToolExecution:
-    outcome = run_async_safely(generate_and_verify(user_request))
+def _run_coding_tool(user_request: str, context: str = "") -> ToolExecution:
+    outcome = run_async_safely(generate_and_verify(user_request, context))
     return ToolExecution(
         tool_name="python_sandbox",
         success=outcome.success,
@@ -89,11 +92,11 @@ async def _execute_search(query: str) -> ToolExecution:
     except Exception as e:
         return ToolExecution("document_reasoning", False, "", str(e))
 
-def _run_search_tool(user_request: str) -> ToolExecution:
+def _run_search_tool(user_request: str, context: str = "") -> ToolExecution:
     return run_async_safely(_execute_search(user_request))
 
-def _run_unsupported_tool(task_type: str) -> Callable[[str], ToolExecution]:
-    def _stub(_user_request: str) -> ToolExecution:
+def _run_unsupported_tool(task_type: str) -> Callable[[str, str], ToolExecution]:
+    def _stub(_user_request: str, _context: str = "") -> ToolExecution:
         return ToolExecution(
             tool_name=f"unsupported:{task_type}",
             success=False,
@@ -108,13 +111,55 @@ def _run_unsupported_tool(task_type: str) -> Callable[[str], ToolExecution]:
     return _stub
 
 
-TOOL_REGISTRY: Dict[str, Callable[[str], ToolExecution]] = {
+async def _execute_vision_async(query: str, context: str = "") -> ToolExecution:
+    from backend.router.vision import analyze_vision
+    
+    # Extract file path from query, prioritizing quotes to handle spaces
+    quoted_match = re.search(r'["\']([a-zA-Z]:\\[^"\']+|/[^"\']+)["\']', query)
+    if quoted_match:
+        path_str = quoted_match.group(1)
+    else:
+        path_match = re.search(r'([a-zA-Z]:\\[^\s]+|/[^\s]+)', query)
+        if not path_match:
+            return ToolExecution("vision", False, "", "Could not find a valid file path in the request.")
+        path_str = path_match.group(1)
+        
+    image_path = Path(path_str.strip(".,'\""))
+    
+    if not image_path.exists() or not image_path.is_file():
+        return ToolExecution("vision", False, "", f"Image file not found: {image_path}")
+        
+    try:
+        b64_data = base64.b64encode(image_path.read_bytes()).decode("utf-8")
+        
+        # Append high-level errors to the prompt if provided
+        final_query = query
+        if context:
+            final_query += f"\n\nNote: Previous attempts failed with the following feedback:\n{context}"
+            
+        # If the user specifically asks for JSON or structured output
+        wants_structured = "json" in final_query.lower() or "structured" in final_query.lower()
+            
+        result = await analyze_vision(prompt=final_query, image_base64=b64_data, structured=wants_structured)
+        
+        if result.success:
+            return ToolExecution("vision", True, result.content, "")
+        else:
+            return ToolExecution("vision", False, "", result.error or "Vision analysis failed.")
+    except Exception as e:
+        return ToolExecution("vision", False, "", str(e))
+
+def _run_vision_tool(user_request: str, context: str = "") -> ToolExecution:
+    return run_async_safely(_execute_vision_async(user_request, context))
+
+
+TOOL_REGISTRY: Dict[str, Callable[[str, str], ToolExecution]] = {
     "coding": _run_coding_tool,
     "document_reasoning": _run_search_tool,
-    "vision": _run_unsupported_tool("vision"),
+    "vision": _run_vision_tool,
     "general_reasoning": _run_unsupported_tool("general_reasoning"),
 }
 
 
-def get_tool_for_task_type(task_type: str) -> Callable[[str], ToolExecution]:
+def get_tool_for_task_type(task_type: str) -> Callable[[str, str], ToolExecution]:
     return TOOL_REGISTRY.get(task_type, _run_unsupported_tool(task_type))

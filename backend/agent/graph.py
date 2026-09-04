@@ -67,9 +67,47 @@ def node_select_tool(state: AgentState) -> dict:
 
 
 def node_execute_tool(state: AgentState) -> dict:
+    from backend.security.rbac import rbac_enforcer
+    from backend.security.audit import audit_log
+
     logger.info("[%s] Node: execute_tool (tool: %s)", state.get("session_id", "unknown"), state.get("task_type"))
-    tool_fn = get_tool_for_task_type(state["task_type"])
-    execution = tool_fn(state["user_request"])
+    
+    task_type = state["task_type"]
+    user_role = state["user_role"]
+    
+    # Map task_type to required permission
+    required_permission = f"tool.{task_type}"
+    if task_type == "coding":
+        required_permission = "agent.execute_code"
+    elif task_type == "vision":
+        required_permission = "ai.vision"
+    elif task_type == "document_reasoning":
+        required_permission = "rag.search"
+        
+    if not rbac_enforcer.has_permission(user_role, required_permission):
+        # Log audit and fail
+        audit_log.log_event(
+            event_type="agent_tool_denied",
+            user=user_role,
+            result="DENIED",
+            details={"required_permission": required_permission, "task_type": task_type},
+        )
+        return {
+            "tool_results": state["tool_results"] + [{
+                "tool": task_type,
+                "success": False,
+                "output": "",
+                "error": f"Role '{user_role}' is not authorized to use {task_type} (requires {required_permission}).",
+            }],
+            "attempts": state["attempts"] + 1,
+        }
+
+    tool_fn = get_tool_for_task_type(task_type)
+    
+    # Pass high-level errors from previous attempts as context
+    context = "\n".join(state["errors"]) if state["errors"] else ""
+    execution = tool_fn(state["user_request"], context)
+    
     tool_result = {
         "tool": execution.tool_name,
         "success": execution.success,
@@ -105,12 +143,10 @@ def node_verify(state: AgentState) -> dict:
 
 
 def node_repair(state: AgentState) -> dict:
-    # No state change needed here yet — attempts is already incremented in
-    # execute_tool, and for the coding tool the repair itself already
-    # happened inside generate_and_verify's internal loop (Phase 8/9).
-    # This node is the hook point for repair strategies that need agent-
-    # level context the tool itself doesn't have (e.g. re-reading the
-    # original plan step before retrying).
+    # No state change needed here — attempts is already incremented in
+    # execute_tool. High-level verification errors are logged into state["errors"]
+    # by node_observe, and automatically passed as `context` to the next
+    # tool_fn execution in node_execute_tool.
     return {}
 
 

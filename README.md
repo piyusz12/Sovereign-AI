@@ -83,21 +83,22 @@ OpenTelemetry    Zero-Egress Monitor
 ```
 sovereign-ai-workbench/
 ├── backend/
-│   ├── api/          # FastAPI application
-│   ├── agent/        # LangGraph agent
+│   ├── api/          # FastAPI application & REST endpoints
+│   ├── agent/        # LangGraph agent & self-correction loop
 │   ├── router/       # Model router + task classifier + Ollama client
-│   ├── rag/          # RAG pipeline
-│   ├── tools/        # Agent tools
-│   ├── security/     # Auth, RBAC, policy
-│   ├── documents/    # Document processing
-│   └── generators/   # DOCX/XLSX/PPTX generation
+│   ├── rag/          # Hybrid & Adaptive RAG pipeline
+│   ├── tools/        # Agent tools & registries
+│   ├── security/     # Pre-retrieval RBAC, JWT auth, and policy enforcement
+│   ├── documents/    # Document ingestion & parsing (Docling/OCR)
+│   ├── generators/   # Deliverable generation (DOCX, XLSX, PPTX, Code ZIP)
+│   └── workflows/    # End-to-end industrial SIH workflow orchestrator
 ├── configs/          # YAML configurations
 ├── docker/           # Docker compose + Dockerfiles
 ├── scripts/          # Setup, benchmark, and verification scripts
 ├── tests/            # Test suite
-├── monitoring/       # Sovereignty monitor
+├── monitoring/       # Sovereignty monitor & zero-egress audits
 ├── data/             # Documents, embeddings, output
-└── frontend/         # React/Next.js UI (later)
+└── frontend/         # React/Next.js UI
 ```
 
 ## Quickstart
@@ -121,12 +122,42 @@ pip install -r requirements.txt
 ### 3. Run Backend
 ```bash
 python start.py
+# or via uvicorn directly
+uvicorn backend.api.main:app --host 127.0.0.1 --port 8000
 ```
 
-### 4. Verify Phase 4 (Ollama Integration)
+### 4. Verification & Testing
 ```bash
+# Verify Phase 4 (Ollama Integration)
 python scripts/verify_phase4.py
+
+# Verify Phase 18 (Enterprise RBAC Enforcement)
+python test_rbac_endpoints.py
+
+# Verify Phase 20 (Deliverable Generation: DOCX, XLSX, PPTX, ZIP)
+python test_generators.py
+
+# Verify Phase 21 (Flagship End-to-End SIH Workflows)
+python test_sih_workflows.py
 ```
+
+## Flagship SIH Industrial Workflows
+
+### 1. Multimodal Inspection & Defect Approval Note
+- **Endpoint**: `POST /api/v1/workflows/run` (`workflow_name: "inspection"`)
+- **Pipeline**:
+  1. Ingests multimodal engineering inspection reports / diagrams via Vision pipeline.
+  2. Retrieves confidential compliance standards and SOPs via Adaptive RAG with pre-retrieval RBAC.
+  3. Executes tolerance calculations and validation in isolated Docker sandbox.
+  4. Generates an executive `.docx` / `.pdf` approval note deliverable with verifiable audit trail.
+
+### 2. Confidential Data Analysis & Verified Code Delivery
+- **Endpoint**: `POST /api/v1/workflows/run` (`workflow_name: "coding"`)
+- **Pipeline**:
+  1. Ingests internal datasets / engineering queries.
+  2. Synthesizes executable Python data analysis pipelines via dedicated coder model.
+  3. Runs code in sandboxed execution environment with automated self-repair loops.
+  4. Delivers verified calculations, data summaries, and production-ready `.zip` code packages.
 
 ## Phase Roadmap
 
@@ -137,24 +168,25 @@ python scripts/verify_phase4.py
 | 2 | NVIDIA + CUDA + Docker GPU | ✅ |
 | 3 | Python Backend | ✅ |
 | 4 | Qwen3-14B via Ollama & Router | ✅ |
-| 5 | Local Model API | ⬜ |
-| 6 | Task Router | ⬜ |
-| 7 | Coder Model | ⬜ |
-| 8 | Vision Model | ⬜ |
-| 9 | Tool Framework | ⬜ |
-| 10 | Docker Sandbox | ⬜ |
-| 11 | LangGraph Agent | ⬜ |
-| 12-13 | Docling + PaddleOCR | ⬜ |
-| 14-16 | Qdrant + Embeddings + Reranker | ⬜ |
-| 17 | Hybrid RAG | ⬜ |
-| 18 | RBAC | ⬜ |
-| 19 | Adaptive RAG | ⬜ |
-| 20 | DOCX/XLSX/PPTX Generation | ⬜ |
-| 21-23 | SIH Demo Workflows | ⬜ |
+| 5 | Local Model API | ✅ |
+| 6 | Task Router | ✅ |
+| 7 | Coder Model | ✅ |
+| 8 | Vision Model | ✅ |
+| 9 | Tool Framework | ✅ |
+| 10 | Docker Sandbox | ✅ |
+| 11 | LangGraph Agent | ✅ |
+| 12-13 | Docling + PaddleOCR | ✅ |
+| 14-16 | Qdrant + Embeddings + Reranker | ✅ |
+| 17 | Hybrid RAG | ✅ |
+| 18 | Enterprise RBAC & Pre-Retrieval Clearance | ✅ |
+| 19 | Adaptive RAG & Self-Correction | ✅ |
+| 20 | Deliverable Generation (DOCX/XLSX/PPTX/Code) | ✅ |
+| 21 | Flagship SIH Workflows (Inspection & Code Gen) | ✅ |
+| 22-23 | Advanced Specialized Workflows | ⬜ |
 | 24-26 | LiteLLM + vLLM + Infinity | ⬜ |
 | 27-29 | Audit + Security + Zero-Egress | ⬜ |
 | 30 | Frontend | ⬜ |
-| 31-32 | Optimization + SIH Demo | ⬜ |
+| 31-32 | Optimization + SIH Final Demo | ⬜ |
 
 ## Key Principles
 
@@ -168,3 +200,4 @@ python scripts/verify_phase4.py
 ---
 
 *Built for Smart India Hackathon — Demonstrating sovereign AI on consumer hardware.*
+

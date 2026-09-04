@@ -21,6 +21,7 @@ from backend.api.openai_routes import openai_router
 from backend.api.health import probe_all
 from backend.api.middleware import audit_logger, sovereignty_enforcer
 from backend.router.model_registry import model_registry
+from backend.workflows.registry import init_workflows
 
 logger = logging.getLogger("sovereign.api")
 
@@ -42,6 +43,9 @@ async def lifespan(app: FastAPI):
         await model_registry.load_model("reasoning")
     except Exception as e:
         logger.warning("Failed to warm up default model: %s", e)
+        
+    logger.info("Initializing Flagship SIH Workflows...")
+    init_workflows()
 
     yield
 

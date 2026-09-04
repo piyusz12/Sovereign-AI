@@ -21,10 +21,7 @@ class RolePermission:
     role: str
     departments: list[str]  # Accessible departments
     document_types: list[str]  # Accessible document types
-    can_write: bool
-    can_execute_code: bool
-    can_generate_documents: bool
-    can_admin: bool
+    permissions: list[str]  # Explicit string permissions
 
 
 # Role definitions
@@ -33,55 +30,37 @@ ROLE_PERMISSIONS: dict[str, RolePermission] = {
         role="admin",
         departments=["all"],
         document_types=["all"],
-        can_write=True,
-        can_execute_code=True,
-        can_generate_documents=True,
-        can_admin=True,
+        permissions=["all"],
     ),
     "engineering": RolePermission(
         role="engineering",
         departments=["engineering", "operations", "public"],
         document_types=["inspection_report", "sop", "pid", "specification", "manual"],
-        can_write=True,
-        can_execute_code=True,
-        can_generate_documents=True,
-        can_admin=False,
+        permissions=["ai.chat", "ai.vision", "document.read", "document.upload", "rag.search", "agent.execute_code", "agent.run", "report.create"],
     ),
     "finance": RolePermission(
         role="finance",
         departments=["finance", "procurement", "public"],
         document_types=["budget", "invoice", "purchase_order", "financial_report"],
-        can_write=False,
-        can_execute_code=False,
-        can_generate_documents=True,
-        can_admin=False,
+        permissions=["ai.chat", "document.read", "rag.search", "report.create"],
     ),
     "procurement": RolePermission(
         role="procurement",
         departments=["procurement", "finance", "public"],
         document_types=["purchase_order", "vendor_report", "contract", "invoice"],
-        can_write=True,
-        can_execute_code=False,
-        can_generate_documents=True,
-        can_admin=False,
+        permissions=["ai.chat", "document.read", "document.upload", "rag.search", "report.create"],
     ),
     "hr": RolePermission(
         role="hr",
         departments=["hr", "public"],
         document_types=["policy", "compliance", "training"],
-        can_write=False,
-        can_execute_code=False,
-        can_generate_documents=True,
-        can_admin=False,
+        permissions=["ai.chat", "document.read", "rag.search"],
     ),
     "operations": RolePermission(
         role="operations",
         departments=["operations", "engineering", "public"],
         document_types=["inspection_report", "sop", "maintenance_log", "telemetry"],
-        can_write=True,
-        can_execute_code=True,
-        can_generate_documents=True,
-        can_admin=False,
+        permissions=["ai.chat", "ai.vision", "document.read", "document.upload", "rag.search", "agent.execute_code", "report.create"],
     ),
 }
 
@@ -137,22 +116,14 @@ class RBACEnforcer:
             ]
         }
 
-    def can_use_tool(self, role: str, tool_name: str) -> bool:
-        """Check if a role can use a specific tool."""
+    def has_permission(self, role: str, permission: str) -> bool:
+        """Check if a role has a specific string permission."""
         perm = self.get_permission(role)
         if not perm:
             return False
-
-        tool_permissions = {
-            "run_python": perm.can_execute_code,
-            "write_file": perm.can_write,
-            "create_docx": perm.can_generate_documents,
-            "create_xlsx": perm.can_generate_documents,
-            "create_pptx": perm.can_generate_documents,
-        }
-
-        # Default: allow read-only tools for everyone
-        return tool_permissions.get(tool_name, True)
+        if "all" in perm.permissions:
+            return True
+        return permission in perm.permissions
 
 
 # Global instance

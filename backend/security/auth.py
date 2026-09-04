@@ -87,6 +87,20 @@ DEMO_USERS: dict[str, dict] = {
         "department": "operations",
         "disabled": False,
     },
+    "hr_user": {
+        "username": "hr_user",
+        "hashed_password": _hash_password("hr123"),
+        "role": "hr",
+        "department": "hr",
+        "disabled": False,
+    },
+    "procurement_user": {
+        "username": "procurement_user",
+        "hashed_password": _hash_password("proc123"),
+        "role": "procurement",
+        "department": "procurement",
+        "disabled": False,
+    },
 }
 
 

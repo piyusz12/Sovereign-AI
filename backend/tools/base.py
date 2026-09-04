@@ -23,7 +23,7 @@ logger = logging.getLogger("sovereign.tools")
 class ToolPermission:
     """Permission configuration for a tool."""
     name: str
-    allowed_roles: list[str]
+    required_permission: str
     requires_approval: bool = False
     blocked: bool = False
     description: str = ""
@@ -60,7 +60,7 @@ class BaseTool(ABC):
         self.description = description
         self.permission = permission or ToolPermission(
             name=name,
-            allowed_roles=["admin", "engineering", "operations"],
+            required_permission=f"tool.{name}",
             description=description,
         )
 
@@ -120,8 +120,9 @@ class BaseTool(ABC):
         ...
 
     def has_permission(self, user_role: str) -> bool:
-        """Check if the user role has permission to use this tool."""
-        return user_role in self.permission.allowed_roles
+        """Check if the user role has permission to use this tool via RBAC."""
+        from backend.security.rbac import rbac_enforcer
+        return rbac_enforcer.has_permission(user_role, self.permission.required_permission)
 
     def to_schema(self) -> dict:
         """Return tool schema for LLM function calling."""
