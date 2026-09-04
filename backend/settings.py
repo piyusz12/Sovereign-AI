@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     ollama_reasoning_model: str = "qwen3:14b"
     ollama_coding_model: str = "qwen2.5-coder:7b"
-    ollama_vision_model: str = "qwen3-vl:8b"
+    ollama_vision_model: str = "llama3.2-vision:latest"
 
     # --- vLLM (Phase 25+) ---
     vllm_base_url: str = "http://localhost:8000"
