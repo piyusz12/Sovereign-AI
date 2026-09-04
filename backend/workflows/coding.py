@@ -5,10 +5,11 @@ Orchestrates: Code Gen -> Sandbox Exec -> Repair Loop -> Deliverables
 """
 
 import logging
+import shutil
+import zipfile
 from pathlib import Path
 from backend.workflows.trace import WorkflowTrace
-
-from backend.agent.code_repair_loop import generate_and_verify
+from backend.coding_agent.agent import run_coding_agent
 from backend.generators.service import deliverable_service
 
 logger = logging.getLogger("sovereign.workflows.coding")
@@ -16,6 +17,27 @@ logger = logging.getLogger("sovereign.workflows.coding")
 async def run_coding_workflow(trace: WorkflowTrace, user_role: str, inputs: dict):
     query = inputs.get("query", "Analyze the data and create a script.")
     file_path = inputs.get("file_path", "")
+    
+    # Check if the user is pointing to a directory (the new Phase 22 feature)
+    if file_path and Path(file_path).is_dir():
+        trace.add_step("Repository Agent Initiated", status="success", details="Running True Coding Agent on " + file_path)
+        
+        result = await run_coding_agent(file_path, query)
+        
+        if result["status"] == "success":
+            trace.add_step("Agent Success", status="success", details="Tests passed and code repaired.")
+            # Package the modified repo
+            output_dir = Path("data/output")
+            output_dir.mkdir(parents=True, exist_ok=True)
+            zip_path = output_dir / "modified_project.zip"
+            shutil.make_archive(str(zip_path.with_suffix("")), 'zip', file_path)
+            trace.deliverables.append(str(zip_path))
+            return
+        else:
+            raise Exception(f"Coding Agent failed: {result['error']}\n{result['output']}")
+
+    # Fallback to older logic for single files (Phase 21 data analysis)
+    from backend.agent.code_repair_loop import generate_and_verify
     
     trace.add_step("Workflow Initiated", status="success", details="Coding & Data Analysis Workflow")
     

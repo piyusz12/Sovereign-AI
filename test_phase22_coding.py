@@ -16,16 +16,16 @@ async def test_coding_workflow():
         headers = {"Authorization": f"Bearer {token}"}
         print(f"[+] Logged in. Token received.")
 
-    file_path = str(Path("demo_data/telemetry/sensor_data.xlsx").absolute())
+    file_path = str(Path("demo_data/inspection-analyzer").absolute())
     
-    print(f"[*] Testing Coding Workflow with {file_path} ...")
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    print(f"[*] Testing True Coding Agent with repository: {file_path} ...")
+    async with httpx.AsyncClient(timeout=300.0) as client:
         try:
             res = await client.post(API_URL, json={
                 "workflow_name": "coding",
                 "inputs": {
                     "file_path": file_path,
-                    "query": "Analyze this telemetry data. Calculate the average temperature (excluding negative/error anomalies like -99.9), detect pressure anomalies (e.g., > 200 PSI), and output a JSON summary."
+                    "query": "Add a feature that exports inspection results as CSV, identifies equipment with measurements below the configured threshold, and exposes the results through an API endpoint. Add tests for this."
                 }
             }, headers=headers)
             
