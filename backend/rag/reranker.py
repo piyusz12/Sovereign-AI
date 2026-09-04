@@ -16,7 +16,7 @@ import httpx
 
 logger = logging.getLogger("sovereign.rag.reranker")
 
-DEFAULT_RERANKER_MODEL = "qwen3-reranker:0.6b"
+DEFAULT_RERANKER_MODEL = "BAAI/bge-reranker-base"
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 
 
@@ -34,6 +34,8 @@ class RerankerService:
     ):
         self.model = model
         self.base_url = base_url
+        self._local_model = None
+        self._local_model_loaded = False
 
     async def rerank(
         self,
@@ -57,17 +59,18 @@ class RerankerService:
         if not documents:
             return []
 
-        # TODO Phase 16: Implement actual reranker API call
-        # For now, use a placeholder scoring based on keyword overlap
+        texts = [doc.get(text_field, "") for doc in documents]
+        
+        # 1. Try to use external API first (Infinity / TEI)
+        scores = await self._call_reranker_api(query, texts)
+        
+        # 2. If API fails/unreachable, fallback to local sentence-transformers
+        if not any(scores):
+            scores = await self._call_local_reranker(query, texts)
+            
         scored = []
-        query_words = set(query.lower().split())
-
-        for doc in documents:
-            text = doc.get(text_field, "").lower()
-            text_words = set(text.split())
-            overlap = len(query_words & text_words)
-            score = overlap / max(len(query_words), 1)
-            scored.append({**doc, "_rerank_score": score})
+        for doc, score in zip(documents, scores):
+            scored.append({**doc, "_rerank_score": float(score)})
 
         scored.sort(key=lambda x: x["_rerank_score"], reverse=True)
         return scored[:top_k]
@@ -84,7 +87,7 @@ class RerankerService:
             # Infinity uses a different format than Ollama
             pairs = [{"query": query, "text": text} for text in texts]
 
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            async with httpx.AsyncClient(timeout=3.0) as client:
                 response = await client.post(
                     f"{self.base_url}/api/rerank",
                     json={"model": self.model, "pairs": pairs},
@@ -93,7 +96,31 @@ class RerankerService:
                 data = response.json()
                 return data.get("scores", [0.0] * len(texts))
         except Exception as e:
-            logger.error("Reranker API call failed: %s", e)
+            logger.debug("Reranker API unreachable, will use local fallback: %s", e)
+            return []
+            
+    async def _call_local_reranker(
+        self, query: str, texts: list[str]
+    ) -> list[float]:
+        """Local fallback using sentence-transformers CrossEncoder."""
+        try:
+            import asyncio
+            from sentence_transformers import CrossEncoder
+
+            if not self._local_model_loaded:
+                logger.info("Loading local CrossEncoder reranker: %s", self.model)
+                self._local_model = CrossEncoder(self.model, max_length=512)
+                self._local_model_loaded = True
+                
+            pairs = [[query, text] for text in texts]
+            # Offload heavy ML inference to thread pool
+            scores = await asyncio.to_thread(self._local_model.predict, pairs)
+            return scores.tolist() if hasattr(scores, "tolist") else list(scores)
+        except ImportError:
+            logger.warning("sentence-transformers not installed. Reranker disabled.")
+            return [0.0] * len(texts)
+        except Exception as e:
+            logger.error("Local reranker failed: %s", e)
             return [0.0] * len(texts)
 
 

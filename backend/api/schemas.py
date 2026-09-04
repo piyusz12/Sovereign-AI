@@ -63,6 +63,8 @@ class ToolAction(str, Enum):
 class ChatRequest(BaseModel):
     """Chat/query request from the user."""
     message: str = Field(..., min_length=1, max_length=10000)
+    images: Optional[list[str]] = None  # List of base64 encoded strings
+    session_id: Optional[str] = None
     task_type: Optional[TaskType] = None  # Auto-classified if not provided
     model: Optional[ModelName] = None  # Auto-routed if not provided
     context: Optional[list[str]] = None  # Additional context
@@ -248,6 +250,28 @@ class ClassifyResponse(BaseModel):
     """Response from the classify endpoint — routing decision without inference."""
     routing_decision: RoutingDecisionSchema
     explanation: Optional[dict[str, Any]] = None  # Detailed pattern breakdown
+    sovereign: bool = True
+
+
+# ── Phase 8: Vision Schemas ───────────────────────────────────────────────────
+
+
+class VisionAnalyzeRequest(BaseModel):
+    """Request to analyze an image using the vision model."""
+    prompt: str = Field(..., min_length=1, max_length=5000)
+    images: list[str] = Field(..., min_length=1, max_length=3)  # Max 3 base64 images
+    temperature: float = Field(default=0.2, ge=0.0, le=2.0)
+    max_tokens: int = Field(default=2048, ge=256, le=8192)
+
+
+class VisionAnalyzeResponse(BaseModel):
+    """Response from the vision model."""
+    model_config = {"protected_namespaces": ()}
+
+    content: str
+    route: RouteInfo
+    model_used: str
+    duration_ms: float
     sovereign: bool = True
 
 

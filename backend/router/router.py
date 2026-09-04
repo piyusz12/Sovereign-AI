@@ -38,6 +38,10 @@ from backend.router.coding import (
     get_system_prompt as get_coding_system_prompt,
     CodeGenerationResult,
 )
+from backend.router.vision import (
+    VisionResult,
+    get_system_prompt as get_vision_system_prompt,
+)
 from backend.router.providers.base import BaseProvider, ProviderChatResponse, ProviderStreamChunk
 from backend.router.providers.factory import get_provider
 from backend.router.session_manager import session_manager, SessionManager
@@ -135,6 +139,7 @@ class ModelRouter:
         self,
         user_input: str,
         has_image: bool = False,
+        images: Optional[list[str]] = None,
         force_model: Optional[str] = None,
         system_prompt: Optional[str] = None,
         temperature: float = 0.7,
@@ -146,7 +151,8 @@ class ModelRouter:
 
         Args:
             user_input: The user's message
-            has_image: Whether the request includes an image
+            has_image: Whether the request includes an image (deprecated, use images)
+            images: List of base64 encoded images
             force_model: Force a specific model category (bypasses classifier)
             system_prompt: Optional system prompt override
             temperature: Generation temperature
@@ -157,6 +163,8 @@ class ModelRouter:
             Dict with response text, classification info, model metadata, and metrics
         """
         start = time.time()
+        if images:
+            has_image = True
 
         # Step 1: Classify (or force)
         if force_model:
@@ -189,7 +197,7 @@ class ModelRouter:
         )
 
         # Step 4: Send to model via provider
-        messages = self._build_messages(user_input, effective_prompt, session_id)
+        messages = self._build_messages(user_input, effective_prompt, session_id, images=images)
         provider = self._get_provider(model)
 
         try:
@@ -250,6 +258,7 @@ class ModelRouter:
         self,
         user_input: str,
         has_image: bool = False,
+        images: Optional[list[str]] = None,
         force_model: Optional[str] = None,
         system_prompt: Optional[str] = None,
         temperature: float = 0.7,
@@ -265,6 +274,8 @@ class ModelRouter:
             {"chunk": "", "done": true, "classification": {...}, "model_used": {...}, "metrics": {...}}
         """
         start = time.time()
+        if images:
+            has_image = True
 
         # Step 1: Classify
         if force_model:
@@ -296,7 +307,7 @@ class ModelRouter:
         )
 
         # Step 4: Stream from provider
-        messages = self._build_messages(user_input, effective_prompt, session_id)
+        messages = self._build_messages(user_input, effective_prompt, session_id, images=images)
         provider = self._get_provider(model)
         full_response = []
 
@@ -443,6 +454,61 @@ class ModelRouter:
                 error=str(e),
             )
 
+    # ── Vision Analysis (Phase 8) ─────────────────────────────────────────
+
+    async def analyze_vision(
+        self,
+        prompt: str,
+        images: list[str],
+        temperature: float = 0.2,
+        max_tokens: int = 2048,
+    ) -> VisionResult:
+        """
+        Analyze an image using the vision model.
+        Forces the vision category and uses the specialized vision prompt.
+
+        Args:
+            prompt: Question or analysis request
+            images: List of base64 encoded images
+            temperature: Low temperature for factual observation
+            max_tokens: Maximum tokens
+
+        Returns:
+            VisionResult with analysis text and metadata
+        """
+        start = time.time()
+        try:
+            result = await self.route(
+                user_input=prompt,
+                images=images,
+                force_model="vision",
+                system_prompt=get_vision_system_prompt(),
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+
+            response_text = result.get("response", "")
+            model_used = result.get("model_used", {}).get("model_id", "")
+            duration_ms = round((time.time() - start) * 1000, 2)
+
+            return VisionResult(
+                content=response_text,
+                model_used=model_used,
+                duration_ms=duration_ms,
+                success=True,
+            )
+
+        except Exception as e:
+            duration_ms = round((time.time() - start) * 1000, 2)
+            logger.error("Vision analysis failed: %s", e)
+            return VisionResult(
+                content="",
+                model_used="",
+                duration_ms=duration_ms,
+                success=False,
+                error=str(e),
+            )
+
     # ── Internal Helpers ──────────────────────────────────────────────────
 
     async def _try_llm_classify(
@@ -534,6 +600,13 @@ class ModelRouter:
         if category == "coding" or task_type in ("coding", "data_analysis"):
             return get_coding_system_prompt(task_type)
 
+        # Phase 8: Use vision system prompt for vision tasks
+        if category == "vision" or task_type == "vision":
+            # If model config specifies a system prompt, use it (we will populate it via model_registry)
+            if model.system_prompt:
+                return model.system_prompt
+            return get_vision_system_prompt()
+
         # Use model's configured system prompt
         if model.system_prompt:
             return model.system_prompt
@@ -553,15 +626,20 @@ class ModelRouter:
         user_input: str,
         system_prompt: str,
         session_id: Optional[str] = None,
-    ) -> list[dict[str, str]]:
-        """Build the messages list for the chat API, including history if present."""
+        images: Optional[list[str]] = None,
+    ) -> list[dict[str, Any]]:
+        """Build the messages list for the chat API, including history and images if present."""
         messages = [{"role": "system", "content": system_prompt}]
 
         if session_id:
             history = self.sessions.get_history(session_id)
             messages.extend(history)
 
-        messages.append({"role": "user", "content": user_input})
+        user_message: dict[str, Any] = {"role": "user", "content": user_input}
+        if images:
+            user_message["images"] = images
+
+        messages.append(user_message)
         return messages
 
 

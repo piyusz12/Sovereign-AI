@@ -1,64 +1,89 @@
 """
-Sovereign AI Workbench — Agent State
+PHASE 11 — Agent state.
 
-TypedDict state definition for the LangGraph agent.
-Carries all context through the cyclic agent execution graph.
+Single source of truth for what flows through the LangGraph graph. Kept in
+its own file because the RAG nodes (Phase 17), RBAC filter (Phase 18), and
+document tools (Phase 12+) will all read/write this same object later —
+better to nail the shape now than reshape it under five node functions.
 """
 
 from __future__ import annotations
 
-from typing import Any, Optional, TypedDict
+from typing import Any, List, Optional, TypedDict
+import uuid
+
+# In python 3.11+, NotRequired is in typing
+try:
+    from typing import NotRequired
+except ImportError:
+    from typing_extensions import NotRequired
 
 
-class AgentState(TypedDict, total=False):
-    """
-    Complete state carried through the LangGraph agent execution.
+class ToolResult(TypedDict):
+    tool: str
+    success: bool
+    output: str
+    error: str
 
-    The agent graph uses cyclic state transitions:
-    Understand → Plan → Select Tool → Execute → Observe → Verify → (retry/repair/output)
-    """
 
-    # ── User Input ─────────────────────────────────────────────────────────
+class AgentState(TypedDict):
+    # input
+    session_id: str         # Trace execution ID for zero-egress telemetry
     user_request: str
-    user_role: str  # RBAC role
+    user_role: str          # RBAC role: "engineering", "admin", "operations", etc.
 
-    # ── Classification ─────────────────────────────────────────────────────
-    task_type: str
-    model_selected: str
-    classification_confidence: float
+    # understand_goal
+    task_type: str          # "coding" | "document_reasoning" | "vision" | "unsupported"
+    task_type_reason: str
 
-    # ── Planning ───────────────────────────────────────────────────────────
-    plan: list[dict[str, Any]]  # Ordered list of planned steps
-    current_step: int
+    # plan
+    plan: List[str]
 
-    # ── Tool Execution ─────────────────────────────────────────────────────
-    tool_calls: list[dict[str, Any]]  # History of tool calls
-    tool_results: list[dict[str, Any]]  # Results from tools
+    # select_tool / execute_tool / observe
+    current_step_index: int
+    tool_results: List[ToolResult]
 
-    # ── RAG Context ────────────────────────────────────────────────────────
-    retrieved_context: list[dict[str, Any]]  # Retrieved document chunks
-    retrieval_scores: list[float]
-    query_rewrites: list[str]  # Track query reformulations
-    retrieval_attempts: int
+    # retrieval (Phase 17+, empty until RAG exists)
+    retrieved_context: List[str]
 
-    # ── Code Execution ─────────────────────────────────────────────────────
-    generated_code: Optional[str]
-    sandbox_stdout: Optional[str]
-    sandbox_stderr: Optional[str]
-    sandbox_exit_code: Optional[int]
-    code_fix_attempts: int
+    # verify / repair
+    verification_status: str  # "complete" | "error" | "insufficient" | "unsupported"
+    errors: List[str]
+    attempts: int
+    max_attempts: int
 
-    # ── Output ─────────────────────────────────────────────────────────────
-    response: str  # Final response text
-    files_created: list[str]  # Generated documents
-    sources_cited: list[dict[str, Any]]  # Document citations
+    # output
+    files_created: List[str]
+    final_answer: Optional[str]
+    
+    # telemetry
+    duration_ms: NotRequired[float]
 
-    # ── Verification ───────────────────────────────────────────────────────
-    verification_status: str  # "verified", "failed", "insufficient_evidence"
-    verification_details: str
-    errors: list[str]
 
-    # ── Metadata ───────────────────────────────────────────────────────────
-    messages: list[dict[str, Any]]  # LLM message history
-    iteration_count: int
-    max_iterations: int  # Safety limit
+def new_state(
+    user_request: str,
+    *,
+    user_role: str = "engineering",
+    max_attempts: int = 3,
+    session_id: Optional[str] = None,
+) -> AgentState:
+    """Factory so every entry point builds a fully-initialized state —
+    LangGraph will not fill in missing keys for you."""
+    return AgentState(
+        session_id=session_id or str(uuid.uuid4()),
+        user_request=user_request,
+        user_role=user_role,
+        task_type="",
+        task_type_reason="",
+        plan=[],
+        current_step_index=0,
+        tool_results=[],
+        retrieved_context=[],
+        verification_status="",
+        errors=[],
+        attempts=0,
+        max_attempts=max_attempts,
+        files_created=[],
+        final_answer=None,
+        duration_ms=0.0,
+    )

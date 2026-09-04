@@ -41,6 +41,8 @@ from backend.api.schemas import (
     TaskType,
     ModelName,
     UploadResponse,
+    VisionAnalyzeRequest,
+    VisionAnalyzeResponse,
 )
 from backend.router.model_registry import model_registry
 from backend.router.task_classifier import task_classifier
@@ -66,11 +68,12 @@ async def chat(request: ChatRequest):
     """
     start = time.time()
     request_id = str(uuid.uuid4())
+    session_id = request.session_id or request_id
 
     # Use the real task classifier
     classification = task_classifier.classify(
         request.message,
-        has_image=False,
+        has_image=bool(request.images),
     )
 
     # Override with explicit request if provided
@@ -81,7 +84,9 @@ async def chat(request: ChatRequest):
     try:
         result = await model_router.route(
             user_input=request.message,
-            has_image=False,
+            images=request.images,
+            force_model=request.model,
+            session_id=session_id,
         )
         response_text = result.get("response", "[No response from model]")
     except Exception as e:
@@ -120,12 +125,15 @@ async def chat_stream(request: ChatRequest):
         ...
         data: {"chunk": "", "done": true, "classification": {...}, "metrics": {...}}
     """
+    session_id = request.session_id or str(uuid.uuid4())
 
     async def event_generator():
         try:
             async for chunk_data in model_router.route_stream(
                 user_input=request.message,
-                has_image=False,
+                images=request.images,
+                force_model=request.model,
+                session_id=session_id,
             ):
                 yield f"data: {json.dumps(chunk_data)}\n\n"
         except Exception as e:
@@ -382,6 +390,41 @@ async def list_available_models():
     }
 
 
+# ── Vision Endpoints (Phase 8) ────────────────────────────────────────────────
+
+@router.post("/vision/analyze", response_model=VisionAnalyzeResponse)
+async def analyze_vision(request: VisionAnalyzeRequest):
+    """
+    Dedicated endpoint for vision analysis.
+    Forces the vision model and specialized system prompt.
+    """
+    try:
+        result = await model_router.analyze_vision(
+            prompt=request.prompt,
+            images=request.images,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
+        )
+
+        if not result.success:
+            raise HTTPException(status_code=500, detail=result.error)
+
+        return VisionAnalyzeResponse(
+            content=result.content,
+            route={
+                "task_type": "vision",
+                "model_category": "vision",
+                "model_name": result.model_used,
+            },
+            model_used=result.model_used,
+            duration_ms=result.duration_ms,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ── Document Upload ────────────────────────────────────────────────────────────
 
 
@@ -390,28 +433,56 @@ async def upload_document(
     file: UploadFile = File(...),
     department: Optional[str] = None,
     access_level: str = "engineering",
+    description: Optional[str] = None,
 ):
     """
     Upload a document for processing. The pipeline will:
     1. Detect document type
-    2. Run Docling for layout extraction
-    3. Run PaddleOCR for scanned pages
+    2. Run Docling for layout extraction (or fallback)
+    3. Run PaddleOCR for scanned pages (Phase 13+)
     4. Chunk and embed
     5. Store in Qdrant with metadata
     """
+    from backend.documents.ingest import ingestion_pipeline
+    import shutil
+    import os
+    from pathlib import Path
+    
     start = time.time()
-    doc_id = f"DOC-{uuid.uuid4().hex[:8].upper()}"
-
-    # TODO Phase 12-15: Implement actual document ingestion pipeline
-    duration = round((time.time() - start) * 1000, 2)
+    
+    # Save uploaded file to temp/uploads directory
+    upload_dir = Path("data/uploads")
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    
+    safe_filename = file.filename or "unknown.pdf"
+    file_path = upload_dir / f"{uuid.uuid4().hex[:8]}_{safe_filename}"
+    
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        result = await ingestion_pipeline.ingest(
+            file_path=str(file_path),
+            department=department or "engineering",
+            access_level=access_level,
+            description=description,
+        )
+        
+        # Cleanup uploaded file for zero-egress/ephemeral policy
+        if file_path.exists():
+            file_path.unlink()
+            
+    except Exception as e:
+        logger.error("Upload failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
 
     return UploadResponse(
-        document_id=doc_id,
-        filename=file.filename or "unknown",
-        pages=0,
-        chunks=0,
-        status="pending_implementation",
-        processing_time_ms=duration,
+        document_id=result.document_id,
+        filename=result.filename,
+        pages=result.pages,
+        chunks=result.chunks,
+        status=result.status,
+        processing_time_ms=result.processing_time_ms,
     )
 
 
@@ -424,11 +495,48 @@ async def search_documents(request: SearchRequest):
     Hybrid search: dense (Qdrant) + BM25 -> merge -> rerank -> top K.
     RBAC filtering is applied BEFORE retrieval.
     """
-    # TODO Phase 14-17: Implement actual RAG pipeline
-    return SearchResponse(
-        results=[],
+    from backend.rag.embedder import embedding_service
+    from backend.rag.retriever import hybrid_retriever
+    from backend.rag.reranker import reranker_service
+    from backend.api.schemas import SourceDocument
+
+    # 1. Embed query
+    query_embedding = await embedding_service.embed_text(request.query)
+
+    # 2. Hybrid search with RBAC
+    candidates = await hybrid_retriever.search(
         query=request.query,
-        total_found=0,
+        query_embedding=query_embedding,
+        top_k=request.top_k * 2 if request.rerank else request.top_k,
+        user_role=request.user_role.value if hasattr(request.user_role, 'value') else request.user_role,
+        department_filter=request.department_filter,
+    )
+
+    # 3. Rerank
+    if request.rerank and candidates:
+        candidates = await reranker_service.rerank(
+            query=request.query,
+            documents=candidates,
+            top_k=request.top_k,
+        )
+        
+    # 4. Format response
+    source_docs = []
+    for doc in candidates:
+        source_docs.append(
+            SourceDocument(
+                document_id=doc.get("document_id", "unknown"),
+                title=doc.get("filename") or doc.get("title") or "Document",
+                page=doc.get("page"),
+                relevance_score=doc.get("_rerank_score") if request.rerank else doc.get("_rrf_score", 0.0),
+                snippet=doc.get("text", "")[:500] + "...",
+            )
+        )
+
+    return SearchResponse(
+        results=source_docs,
+        query=request.query,
+        total_found=len(source_docs),
         reranked=request.rerank,
     )
 

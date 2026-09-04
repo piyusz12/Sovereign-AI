@@ -349,7 +349,7 @@ class OllamaClient:
     async def chat(
         self,
         model: str,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         temperature: float = 0.7,
         max_tokens: int = 4096,
         keep_alive: str = "10m",
@@ -414,7 +414,7 @@ class OllamaClient:
     async def chat_stream(
         self,
         model: str,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         temperature: float = 0.7,
         max_tokens: int = 4096,
         keep_alive: str = "10m",

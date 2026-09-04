@@ -17,12 +17,17 @@ from backend.router.routing_policy import (
 )
 from backend.router.llm_classifier import LLMClassifier
 from backend.api.schemas import TaskType, ModelName
+from backend.router.router import ModelRouter
+from unittest.mock import patch, AsyncMock
 
 
 @pytest.fixture
 def classifier():
     return TaskClassifier()
 
+@pytest.fixture
+def router():
+    return ModelRouter()
 
 @pytest.fixture
 def policy():
@@ -328,3 +333,48 @@ class TestCoderRouting:
         result = classifier.classify("Write code to process this image", has_image=True)
         assert result.task_type == TaskType.VISION
         assert result.model == ModelName.QWEN3_VL_8B
+
+
+# ── Phase 8: Vision Routing Tests ─────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_analyze_vision_success(router):
+    """Verify analyze_vision forces the vision model and specialized prompt."""
+    with patch.object(router, 'route', new_callable=AsyncMock) as mock_route:
+        mock_route.return_value = {
+            "response": "Found valve V-204",
+            "classification": {"task_type": "vision", "model": "qwen3-vl:8b"},
+            "model_used": {"model_id": "qwen3-vl:8b"},
+        }
+        
+        result = await router.analyze_vision(
+            prompt="Find valves",
+            images=["base64_img_string"],
+            temperature=0.2,
+        )
+        
+        assert result.success is True
+        assert result.content == "Found valve V-204"
+        assert result.model_used == "qwen3-vl:8b"
+        
+        mock_route.assert_called_once()
+        kwargs = mock_route.call_args.kwargs
+        assert kwargs["force_model"] == "vision"
+        assert kwargs["images"] == ["base64_img_string"]
+        assert "Sovereign AI vision assistant" in kwargs["system_prompt"]
+
+
+def test_build_messages_with_images(router):
+    """Verify _build_messages properly includes images in the user message payload."""
+    messages = router._build_messages(
+        user_input="What is in this image?",
+        system_prompt="System rules.",
+        images=["base64_string_1", "base64_string_2"]
+    )
+    
+    assert len(messages) == 2
+    assert messages[0] == {"role": "system", "content": "System rules."}
+    assert messages[1]["role"] == "user"
+    assert messages[1]["content"] == "What is in this image?"
+    assert "images" in messages[1]
+    assert messages[1]["images"] == ["base64_string_1", "base64_string_2"]

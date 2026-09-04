@@ -145,6 +145,52 @@ class HybridRetriever:
         except Exception as e:
             logger.error("Failed to connect to Qdrant: %s", e)
 
+    async def upsert_chunks(
+        self,
+        chunks: list[dict],
+        collection: str = "sovereign_documents",
+    ) -> bool:
+        """Upsert embedded chunks into Qdrant and BM25."""
+        if not self._qdrant_client:
+            logger.warning("Qdrant client not connected. Skipping dense upsert.")
+            return False
+
+        try:
+            from qdrant_client.models import PointStruct
+            import uuid
+
+            points = []
+            for chunk in chunks:
+                point_id = str(uuid.uuid4())
+                # embedding is popped or copied so we don't store it in payload
+                embedding = chunk.get("embedding")
+                if not embedding:
+                    continue
+                
+                payload = {k: v for k, v in chunk.items() if k != "embedding"}
+                points.append(
+                    PointStruct(
+                        id=point_id,
+                        vector=embedding,
+                        payload=payload,
+                    )
+                )
+
+            if points:
+                self._qdrant_client.upsert(
+                    collection_name=collection,
+                    points=points,
+                )
+                logger.info("Upserted %d chunks to Qdrant collection %s", len(points), collection)
+            
+            # Update BM25 index with new chunks
+            self.bm25.index(self.bm25._documents + chunks)
+            
+            return True
+        except Exception as e:
+            logger.error("Failed to upsert chunks: %s", e)
+            return False
+
     async def search(
         self,
         query: str,

@@ -11,7 +11,7 @@ Architecture:
 from __future__ import annotations
 
 import logging
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 from backend.router.providers.base import (
     BaseProvider,
@@ -60,7 +60,7 @@ class VLLMProvider(BaseProvider):
     async def chat(
         self,
         model_id: str,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         temperature: float = 0.7,
         max_tokens: int = 4096,
         keep_alive: str = "10m",
@@ -73,7 +73,7 @@ class VLLMProvider(BaseProvider):
     async def chat_stream(
         self,
         model_id: str,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         temperature: float = 0.7,
         max_tokens: int = 4096,
         keep_alive: str = "10m",

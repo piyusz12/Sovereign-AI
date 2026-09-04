@@ -139,7 +139,7 @@ class BaseProvider(abc.ABC):
     async def chat(
         self,
         model_id: str,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         temperature: float = 0.7,
         max_tokens: int = 4096,
         keep_alive: str = "10m",
@@ -151,7 +151,7 @@ class BaseProvider(abc.ABC):
     async def chat_stream(
         self,
         model_id: str,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         temperature: float = 0.7,
         max_tokens: int = 4096,
         keep_alive: str = "10m",

@@ -55,16 +55,10 @@ class DocumentIngestionPipeline:
     ) -> IngestResult:
         """
         Ingest a document through the full pipeline.
-
-        Args:
-            file_path: Path to the document file
-            department: Department that owns this document
-            access_level: RBAC access level
-            description: Optional description
-
-        Returns:
-            IngestResult with processing details
         """
+        import time
+        start_time = time.time()
+        
         doc_id = f"DOC-{uuid.uuid4().hex[:8].upper()}"
         path = Path(file_path)
 
@@ -73,26 +67,62 @@ class DocumentIngestionPipeline:
         # Step 1: Detect type
         doc_type = self._detect_type(path)
 
-        # TODO Phase 12: Implement full pipeline
-        # Step 2: Docling parsing
-        # Step 3: PaddleOCR for scanned pages
-        # Step 4: Table extraction
-        # Step 5: Metadata extraction
-        # Step 6: Chunking
-        # Step 7: Embedding
-        # Step 8: Qdrant storage
+        # Imports inside method to avoid circular dependencies if any
+        from backend.documents.parser import docling_parser
+        from backend.rag.chunker import document_chunker
+        from backend.rag.embedder import embedding_service
+        from backend.rag.retriever import hybrid_retriever
 
-        return IngestResult(
-            document_id=doc_id,
-            filename=path.name,
-            document_type=doc_type,
-            pages=0,
-            chunks=0,
-            tables_found=0,
-            images_found=0,
-            processing_time_ms=0.0,
-            status="pending_implementation",
-        )
+        try:
+            # Step 2: Parse (Docling / Fallback)
+            parsed_doc = await docling_parser.parse(str(path))
+            
+            # Step 3: Metadata
+            metadata = {
+                "document_id": doc_id,
+                "filename": path.name,
+                "document_type": doc_type,
+                "department": department,
+                "access_level": access_level,
+                "description": description or "",
+            }
+            
+            # Step 4: Chunking
+            chunks = document_chunker.chunk_document(parsed_doc.raw_text, metadata)
+            
+            # Step 5: Embedding
+            embedded_chunks = await embedding_service.embed_document_chunks(chunks)
+            
+            # Step 6: Qdrant Storage
+            success = await hybrid_retriever.upsert_chunks(embedded_chunks)
+            
+            processing_time = (time.time() - start_time) * 1000
+            
+            return IngestResult(
+                document_id=doc_id,
+                filename=path.name,
+                document_type=doc_type,
+                pages=parsed_doc.page_count,
+                chunks=len(embedded_chunks),
+                tables_found=len(parsed_doc.tables),
+                images_found=len(parsed_doc.images),
+                processing_time_ms=processing_time,
+                status="success" if success else "failed_qdrant",
+            )
+            
+        except Exception as e:
+            logger.error("Failed to ingest document %s: %s", path.name, e, exc_info=True)
+            return IngestResult(
+                document_id=doc_id,
+                filename=path.name,
+                document_type=doc_type,
+                pages=0,
+                chunks=0,
+                tables_found=0,
+                images_found=0,
+                processing_time_ms=(time.time() - start_time) * 1000,
+                status=f"error: {str(e)}",
+            )
 
     @staticmethod
     def _detect_type(path: Path) -> str:

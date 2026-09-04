@@ -11,7 +11,7 @@ This is the primary inference backend for Phases 4–8.
 from __future__ import annotations
 
 import logging
-from typing import AsyncIterator, Optional
+from typing import Any, AsyncIterator, Optional
 
 from backend.router.ollama_client import OllamaClient, ollama_client
 from backend.router.providers.base import (
@@ -85,7 +85,7 @@ class OllamaProvider(BaseProvider):
     async def chat(
         self,
         model_id: str,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         temperature: float = 0.7,
         max_tokens: int = 4096,
         keep_alive: str = "10m",
@@ -114,7 +114,7 @@ class OllamaProvider(BaseProvider):
     async def chat_stream(
         self,
         model_id: str,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         temperature: float = 0.7,
         max_tokens: int = 4096,
         keep_alive: str = "10m",

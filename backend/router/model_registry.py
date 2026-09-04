@@ -73,19 +73,15 @@ _REASONING_SYSTEM_PROMPT = (
     "rather than fabricating information."
 )
 
-_VISION_SYSTEM_PROMPT = (
-    "You are a Sovereign AI vision assistant operating on local hardware. "
-    "You analyze images, engineering diagrams, P&IDs, scanned documents, "
-    "and technical drawings. Describe what you see precisely and identify "
-    "labeled components, measurements, and annotations. When identifying "
-    "equipment, provide structured output with labels, types, and positions. "
-    "Never access external services or APIs."
-)
-
 # Import coding prompt from the coding module (avoid circular import at module level)
 def _get_coding_system_prompt() -> str:
     from backend.router.coding import CODING_SYSTEM_PROMPT
     return CODING_SYSTEM_PROMPT
+
+# Import vision prompt from the vision module (avoid circular import at module level)
+def _get_vision_system_prompt() -> str:
+    from backend.router.vision import VISION_SYSTEM_PROMPT
+    return VISION_SYSTEM_PROMPT
 
 
 # ── Default Model Registry ────────────────────────────────────────────────────
@@ -125,7 +121,7 @@ DEFAULT_MODELS: dict[str, ModelConfig] = {
         vram_required_mb=6000,
         is_heavy=True,
         base_url="http://localhost:11434",
-        system_prompt=_VISION_SYSTEM_PROMPT,
+        system_prompt="",  # Populated at runtime from vision module
     ),
     "embedding": ModelConfig(
         name="Qwen3-Embedding-0.6B",

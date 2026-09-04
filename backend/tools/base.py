@@ -71,7 +71,7 @@ class BaseTool(ABC):
         start = time.time()
 
         # Check permissions
-        if not self._check_permission(user_role):
+        if not self.has_permission(user_role):
             return ToolResult(
                 tool_name=self.name,
                 success=False,
@@ -119,7 +119,7 @@ class BaseTool(ABC):
         """Implement the actual tool logic. Override in subclasses."""
         ...
 
-    def _check_permission(self, user_role: str) -> bool:
+    def has_permission(self, user_role: str) -> bool:
         """Check if the user role has permission to use this tool."""
         return user_role in self.permission.allowed_roles
 
