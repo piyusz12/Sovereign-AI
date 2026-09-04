@@ -182,7 +182,8 @@ python test_sih_workflows.py
 | 19 | Adaptive RAG & Self-Correction | ✅ |
 | 20 | Deliverable Generation (DOCX/XLSX/PPTX/Code) | ✅ |
 | 21 | Flagship SIH Workflows (Inspection & Code Gen) | ✅ |
-| 22-23 | Advanced Specialized Workflows | ⬜ |
+| 22 | Coding-Agent Flagship Workflow | ✅ |
+| 23 | P&ID Vision Workflow | ⬜ |
 | 24-26 | LiteLLM + vLLM + Infinity | ⬜ |
 | 27-29 | Audit + Security + Zero-Egress | ⬜ |
 | 30 | Frontend | ⬜ |

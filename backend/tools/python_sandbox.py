@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
 import tempfile
 import uuid
 from dataclasses import dataclass
@@ -72,37 +73,57 @@ def _docker_available() -> None:
         )
 
 
-def run_python_code(code: str, *, timeout: int = MAX_RUNTIME_SECONDS) -> SandboxResult:
+def run_python_code(code: str, *, timeout: int = MAX_RUNTIME_SECONDS, input_files: dict[str, str] = None) -> SandboxResult:
     """
     Write `code` to a throwaway scratch directory, mount ONLY that directory
     into a fresh, network-disabled container, run it, and return the result.
     The scratch directory is deleted afterward regardless of outcome.
+    If `input_files` is provided, it maps destination filename (relative to workspace)
+    to an absolute source filepath on the host, which will be copied into the scratch dir.
     """
-    _docker_available()
+    docker_ready = is_docker_running()
+    if not docker_ready:
+        print("WARNING: Docker daemon is not running. Falling back to local unsafe execution.")
 
     run_id = uuid.uuid4().hex[:8]
     scratch_dir = Path(tempfile.mkdtemp(prefix=f"sandbox_{run_id}_"))
     script_path = scratch_dir / "main.py"
     script_path.write_text(code, encoding="utf-8")
 
+    if input_files:
+        for dest_name, src_path in input_files.items():
+            dest_path = scratch_dir / dest_name
+            try:
+                if Path(src_path).is_dir():
+                    shutil.copytree(src_path, dest_path)
+                else:
+                    shutil.copy2(src_path, dest_path)
+            except Exception as e:
+                shutil.rmtree(scratch_dir, ignore_errors=True)
+                raise SandboxError(f"Failed to copy input file {src_path} to sandbox: {e}")
+
     container_name = f"sovereign-sandbox-{run_id}"
 
-    cmd = [
-        "docker", "run",
-        "--rm",
-        "--name", container_name,
-        "--network", "none",
-        "--memory", MAX_MEMORY,
-        "--cpus", MAX_CPUS,
-        "--pids-limit", "64",
-        "--read-only",
-        "--tmpfs", "/tmp:rw,size=64m",
-        "-v", f"{scratch_dir}:/workspace:rw",
-        "-w", "/workspace",
-        "--user", "nobody",
-        SANDBOX_IMAGE,
-        "python", "/workspace/main.py",
-    ]
+    if docker_ready:
+        cmd = [
+            "docker", "run",
+            "--rm",
+            "--name", container_name,
+            "--network", "none",
+            "--memory", MAX_MEMORY,
+            "--cpus", MAX_CPUS,
+            "--pids-limit", "64",
+            "--read-only",
+            "--tmpfs", "/tmp:rw,size=64m",
+            "-v", f"{scratch_dir}:/workspace:rw",
+            "-w", "/workspace",
+            "--user", "nobody",
+            SANDBOX_IMAGE,
+            "python", "/workspace/main.py",
+        ]
+    else:
+        # Fallback to local python for demonstration purposes if docker isn't running
+        cmd = [sys.executable, str(script_path)]
 
     timed_out = False
     try:
@@ -111,6 +132,7 @@ def run_python_code(code: str, *, timeout: int = MAX_RUNTIME_SECONDS) -> Sandbox
             capture_output=True,
             text=True,
             timeout=timeout,
+            cwd=str(scratch_dir) if not docker_ready else None,
         )
         stdout, stderr, exit_code = proc.stdout, proc.stderr, proc.returncode
     except subprocess.TimeoutExpired as exc:

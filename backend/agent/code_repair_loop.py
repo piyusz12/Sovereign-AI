@@ -36,7 +36,7 @@ class RepairLoopResult:
     history: list = field(default_factory=list)  # list of dicts per attempt
 
 
-async def generate_and_verify(task_description: str, context: str = "", *, max_attempts: int = MAX_ATTEMPTS) -> RepairLoopResult:
+async def generate_and_verify(task_description: str, context: str = "", *, max_attempts: int = MAX_ATTEMPTS, input_files: dict[str, str] = None) -> RepairLoopResult:
     if context:
         task_description += f"\n\nHigh-level verification failures from previous attempts:\n{context}"
 
@@ -67,7 +67,7 @@ async def generate_and_verify(task_description: str, context: str = "", *, max_a
         exec_start = time.time()
         try:
             # Using asyncio.to_thread because run_python_code uses blocking subprocess.run
-            result = await asyncio.to_thread(run_python_code, code)
+            result = await asyncio.to_thread(run_python_code, code, input_files=input_files)
         except SandboxError as exc:
             history.append({"attempt": attempt, "stage": "sandbox", "error": str(exc), "generate_ms": gen_ms, "sandbox_ms": (time.time() - exec_start) * 1000})
             break
