@@ -19,6 +19,7 @@ from typing import Optional
 from backend.router.providers.base import BaseProvider
 from backend.router.providers.ollama_provider import OllamaProvider
 from backend.router.providers.vllm_provider import VLLMProvider
+from backend.router.providers.litellm_provider import LiteLLMProvider
 
 logger = logging.getLogger("sovereign.providers.factory")
 
@@ -59,6 +60,7 @@ def _create_provider(provider_name: str, base_url: Optional[str] = None) -> Base
     defaults = {
         "ollama": ("http://localhost:11434", OllamaProvider),
         "vllm": ("http://localhost:8000", VLLMProvider),
+        "litellm": ("http://localhost:4000", LiteLLMProvider),
     }
 
     if provider_name not in defaults:
@@ -73,4 +75,4 @@ def _create_provider(provider_name: str, base_url: Optional[str] = None) -> Base
 
 def list_providers() -> list[str]:
     """Return names of all available providers."""
-    return ["ollama", "vllm"]
+    return ["ollama", "vllm", "litellm"]

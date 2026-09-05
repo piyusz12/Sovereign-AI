@@ -11,7 +11,7 @@ from fastapi.security import OAuth2PasswordBearer
 
 from backend.security.auth import decode_token, DEMO_USERS
 from backend.security.rbac import rbac_enforcer
-from backend.security.audit import audit_log
+from backend.audit import audit_service, current_user_id, current_role
 
 logger = logging.getLogger("sovereign.security.dependencies")
 
@@ -37,6 +37,10 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
             detail="User not found or inactive",
         )
 
+    # Set context variables for audit logging
+    current_user_id.set(user_data["username"])
+    current_role.set(user_data["role"])
+
     return user_data
 
 
@@ -48,11 +52,12 @@ def require_permission(permission: str) -> Callable:
         role = current_user.get("role", "")
         if not rbac_enforcer.has_permission(role, permission):
             # Log the denial to audit trail
-            audit_log.log_event(
-                event_type="authorization_denied",
-                user=current_user.get("username", "unknown"),
-                result="DENIED",
-                details={"required_permission": permission, "role": role},
+            audit_service.log(
+                action="permission.check",
+                status="success",
+                decision="denied",
+                permission=permission,
+                metadata={"role": role}
             )
             logger.warning(
                 "Access denied for user '%s' (role: %s). Missing permission: %s",

@@ -19,7 +19,11 @@ from backend.settings import settings
 from backend.api.routes import router as api_router
 from backend.api.openai_routes import openai_router
 from backend.api.health import probe_all
-from backend.api.middleware import audit_logger, sovereignty_enforcer
+from backend.api.middleware import sovereignty_enforcer
+from backend.audit.middleware import AuditMiddleware
+from backend.audit.router import router as audit_api_router
+from backend.sovereignty.router import router as sovereignty_router
+from backend.sovereignty.service import sovereignty_service
 from backend.router.model_registry import model_registry
 from backend.workflows.registry import init_workflows
 
@@ -46,10 +50,14 @@ async def lifespan(app: FastAPI):
         
     logger.info("Initializing Flagship SIH Workflows...")
     init_workflows()
+    
+    logger.info("Starting Sovereignty Monitor...")
+    await sovereignty_service.start()
 
     yield
 
-    logger.info("Sovereign AI Workbench shutting down...")
+    logger.info("Sovereignty AI Workbench shutting down...")
+    await sovereignty_service.stop()
 
 
 app = FastAPI(
@@ -73,6 +81,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add Audit Middleware
+app.add_middleware(AuditMiddleware)
+
 
 @app.middleware("http")
 async def sovereignty_middleware(request: Request, call_next):
@@ -94,14 +105,8 @@ async def sovereignty_middleware(request: Request, call_next):
     response.headers["X-External-Calls"] = "0"
     response.headers["X-Duration-Ms"] = str(duration_ms)
 
-    # Audit log
-    audit_logger.log({
-        "request_id": request_id,
-        "method": request.method,
-        "path": str(request.url.path),
-        "duration_ms": duration_ms,
-        "status_code": response.status_code,
-    })
+    # Audit logging is now handled by AuditMiddleware
+
 
     return response
 
@@ -144,9 +149,7 @@ async def sovereignty_status():
         "external_dns_queries": 0,
         "external_tcp_connections": 0,
         "external_https_requests": 0,
-        "cloud_ai_requests": 0,
         "bytes_uploaded_externally": 0,
-        "local_api_calls": len(audit_logger.get_entries()),
         "verification_method": "network_monitoring",
         "enforcer": enforcer_status,
     }
@@ -182,4 +185,6 @@ async def internal_error_handler(request: Request, exc):
 
 # Include API routes
 app.include_router(api_router, prefix="/api/v1")
+app.include_router(audit_api_router, prefix="/api/v1")
+app.include_router(sovereignty_router, prefix="/api/v1")
 app.include_router(openai_router, prefix="/v1")

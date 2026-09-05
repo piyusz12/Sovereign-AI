@@ -15,24 +15,7 @@ from fastapi import Request
 logger = logging.getLogger("sovereign.middleware")
 
 
-class AuditLogger:
-    """
-    Logs every API request for audit trail.
-    Compatible with OpenTelemetry traces (Phase 27).
-    """
-
-    def __init__(self):
-        self._entries: list[dict] = []
-
-    def log(self, entry: dict) -> None:
-        """Record an audit entry."""
-        entry["timestamp"] = datetime.now(timezone.utc).isoformat()
-        self._entries.append(entry)
-        logger.info("AUDIT: %s", entry)
-
-    def get_entries(self, limit: int = 100) -> list[dict]:
-        """Retrieve recent audit entries."""
-        return self._entries[-limit:]
+from backend.audit.service import audit_service
 
 
 class SovereigntyEnforcer:
@@ -59,6 +42,16 @@ class SovereigntyEnforcer:
                 "path": str(request.url),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             })
+            
+            # Log violation to the new audit service
+            audit_service.log(
+                action="network.connection",
+                status="error",
+                decision="blocked",
+                source_ip=client_host,
+                destination=str(request.url),
+                metadata={"reason": "external network policy"}
+            )
             return False
         return True
 
@@ -71,6 +64,5 @@ class SovereigntyEnforcer:
         }
 
 
-# Global instances
-audit_logger = AuditLogger()
+# Global instance
 sovereignty_enforcer = SovereigntyEnforcer()

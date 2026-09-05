@@ -28,6 +28,7 @@ class ModelProvider(str, Enum):
     """Supported model serving backends."""
     OLLAMA = "ollama"
     VLLM = "vllm"
+    LITELLM = "litellm"
     INFINITY = "infinity"
     LOCAL = "local"
 
@@ -88,39 +89,39 @@ def _get_vision_system_prompt() -> str:
 
 DEFAULT_MODELS: dict[str, ModelConfig] = {
     "reasoning": ModelConfig(
-        name="Qwen3-14B",
-        provider=ModelProvider.OLLAMA,
-        model_id="qwen3:14b",
+        name="Qwen3-14B (LiteLLM)",
+        provider=ModelProvider.LITELLM,
+        model_id="sovereign-reasoning",
         category=ModelCategory.REASONING,
         quantization="4-bit",
         context_length=32768,
         vram_required_mb=7000,
         is_heavy=True,
-        base_url="http://localhost:11434",
+        base_url="http://localhost:4000",
         system_prompt=_REASONING_SYSTEM_PROMPT,
     ),
     "coding": ModelConfig(
-        name="Qwen2.5-Coder-7B",
-        provider=ModelProvider.OLLAMA,
-        model_id="qwen2.5-coder:7b",
+        name="Qwen2.5-Coder-7B (LiteLLM)",
+        provider=ModelProvider.LITELLM,
+        model_id="sovereign-coding",
         category=ModelCategory.CODING,
         quantization="4-bit",
         context_length=16384,
         vram_required_mb=5000,
         is_heavy=True,
-        base_url="http://localhost:11434",
+        base_url="http://localhost:4000",
         system_prompt="",  # Populated at runtime from coding module
     ),
     "vision": ModelConfig(
-        name="Qwen3-VL-8B",
-        provider=ModelProvider.OLLAMA,
-        model_id="qwen3-vl:8b",
+        name="Qwen3-VL-8B (LiteLLM)",
+        provider=ModelProvider.LITELLM,
+        model_id="sovereign-vision",
         category=ModelCategory.VISION,
         quantization="4-bit",
         context_length=8192,
         vram_required_mb=6000,
         is_heavy=True,
-        base_url="http://localhost:11434",
+        base_url="http://localhost:4000",
         system_prompt="",  # Populated at runtime from vision module
     ),
     "embedding": ModelConfig(

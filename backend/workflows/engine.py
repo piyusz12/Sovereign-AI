@@ -10,6 +10,7 @@ import uuid
 from typing import Any
 
 from backend.workflows.trace import WorkflowTrace
+from backend.audit.context import current_trace_id
 
 logger = logging.getLogger("sovereign.workflows.engine")
 
@@ -25,7 +26,13 @@ class WorkflowEngine:
 
     async def execute(self, user_role: str, request_type: str, inputs: dict[str, Any]) -> WorkflowTrace:
         """Execute a named workflow and return its trace and deliverables."""
-        trace = WorkflowTrace(workflow_id=str(uuid.uuid4()), name=request_type)
+        # Use trace_id from middleware if available, otherwise generate
+        trace_id = current_trace_id.get()
+        if not trace_id:
+            trace_id = f"WF-{uuid.uuid4().hex[:6].upper()}"
+            current_trace_id.set(trace_id)
+            
+        trace = WorkflowTrace(workflow_id=trace_id, name=request_type)
         
         if request_type not in self._workflows:
             trace.add_step("Workflow Routing", status="error", details=f"Unknown workflow: {request_type}")

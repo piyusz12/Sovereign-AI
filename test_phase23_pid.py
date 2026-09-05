@@ -26,7 +26,7 @@ async def test_pid_workflow():
                 "workflow_name": "pid_vision",
                 "inputs": {
                     "file_path": file_path,
-                    "query": "Extract the equipment, valves, and pipelines from this P&ID diagram."
+                    "query": "Identify valves and equipment in this drawing and find their internal specifications."
                 }
             }, headers=headers)
             

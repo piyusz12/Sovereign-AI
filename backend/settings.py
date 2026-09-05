@@ -76,6 +76,8 @@ class Settings(BaseSettings):
     processed_dir: str = "./data/processed"
     embeddings_dir: str = "./data/embeddings"
     output_dir: str = "./data/output"
+    audit_db_path: str = "./data/audit.db"
+    audit_log_path: str = "./data/audit/audit.jsonl"
 
     # --- Monitoring ---
     otel_exporter: str = "console"
