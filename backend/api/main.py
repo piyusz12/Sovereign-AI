@@ -23,6 +23,7 @@ from backend.api.middleware import sovereignty_enforcer
 from backend.audit.middleware import AuditMiddleware
 from backend.audit.router import router as audit_api_router
 from backend.sovereignty.router import router as sovereignty_router
+from backend.security.router import router as security_router
 from backend.sovereignty.service import sovereignty_service
 from backend.router.model_registry import model_registry
 from backend.workflows.registry import init_workflows
@@ -104,6 +105,12 @@ async def sovereignty_middleware(request: Request, call_next):
     response.headers["X-Sovereign"] = "true"
     response.headers["X-External-Calls"] = "0"
     response.headers["X-Duration-Ms"] = str(duration_ms)
+    
+    # Phase 25: Security Headers
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Content-Security-Policy"] = "default-src 'self'"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
 
     # Audit logging is now handled by AuditMiddleware
 
@@ -121,6 +128,8 @@ async def health():
         ollama_url=settings.ollama_base_url,
         qdrant_host=settings.qdrant_host,
         qdrant_port=settings.qdrant_port,
+        vllm_url=getattr(settings, "vllm_base_url", None),
+        infinity_url=getattr(settings, "infinity_base_url", None),
     )
 
     return {
@@ -178,7 +187,7 @@ async def internal_error_handler(request: Request, exc):
         content={
             "error": "Internal server error",
             "sovereign": True,
-            "detail": str(exc) if settings.debug else "Contact administrator",
+            "detail": "Contact administrator",  # No stack traces in production (Phase 25)
         },
     )
 
@@ -187,4 +196,5 @@ async def internal_error_handler(request: Request, exc):
 app.include_router(api_router, prefix="/api/v1")
 app.include_router(audit_api_router, prefix="/api/v1")
 app.include_router(sovereignty_router, prefix="/api/v1")
+app.include_router(security_router, prefix="/api/v1")
 app.include_router(openai_router, prefix="/v1")

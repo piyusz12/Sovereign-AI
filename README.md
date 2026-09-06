@@ -183,11 +183,10 @@ python test_sih_workflows.py
 | 20 | Deliverable Generation (DOCX/XLSX/PPTX/Code) | ✅ |
 | 21 | Flagship SIH Workflows (Inspection & Code Gen) | ✅ |
 | 22 | Coding-Agent Flagship Workflow | ✅ |
-| 23 | P&ID Vision Workflow | ✅ |
-| 24-26 | LiteLLM + vLLM + Infinity | ⬜ |
-| 27-29 | Audit + Security + Zero-Egress | ⬜ |
-| 30 | Frontend | ⬜ |
-| 31-32 | Optimization + SIH Final Demo | ⬜ |
+| 23 | Audit Logging | ✅ |
+| 24 | Sovereignty Monitor | ✅ |
+| 25 | Security Layer (Policy Engine & Hardening) | ⬜ |
+| 26 | Production Hardening / Offline Deployment | ⬜ |
 
 ## Key Principles
 

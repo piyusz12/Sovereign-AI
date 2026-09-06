@@ -14,6 +14,8 @@ from typing import Optional
 
 import httpx
 
+from backend.settings import settings
+
 logger = logging.getLogger("sovereign.rag.reranker")
 
 DEFAULT_RERANKER_MODEL = "BAAI/bge-reranker-base"
@@ -82,9 +84,33 @@ class RerankerService:
         Call the reranker model API.
         Returns relevance scores for each text.
         """
+        # 1. Try Infinity API first (Phase 26)
         try:
-            # Reranker API format depends on the serving backend
-            # Infinity uses a different format than Ollama
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                response = await client.post(
+                    f"{settings.infinity_base_url}/rerank",
+                    json={
+                        "model": self.model,
+                        "query": query,
+                        "documents": texts
+                    },
+                )
+                response.raise_for_status()
+                data = response.json()
+                if "results" in data:
+                    # Infinity usually returns results sorted by relevance_score but they contain the original index.
+                    # We need to map them back to the original order of `texts`
+                    scores = [0.0] * len(texts)
+                    for result in data["results"]:
+                        idx = result.get("index")
+                        if idx is not None and 0 <= idx < len(texts):
+                            scores[idx] = result.get("relevance_score", 0.0)
+                    return scores
+        except Exception as e:
+            logger.debug("Infinity reranker API unreachable, falling back: %s", e)
+
+        # 2. Try Ollama API next
+        try:
             pairs = [{"query": query, "text": text} for text in texts]
 
             async with httpx.AsyncClient(timeout=3.0) as client:
@@ -96,7 +122,7 @@ class RerankerService:
                 data = response.json()
                 return data.get("scores", [0.0] * len(texts))
         except Exception as e:
-            logger.debug("Reranker API unreachable, will use local fallback: %s", e)
+            logger.debug("Ollama Reranker API unreachable, will use local fallback: %s", e)
             return []
             
     async def _call_local_reranker(

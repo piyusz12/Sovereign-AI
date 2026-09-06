@@ -1,0 +1,6 @@
+app_name: "Sovereign AI Workbench (Demo)"
+debug: false
+log_level: "INFO"
+ollama_base_url: "http://localhost:11434"
+sandbox_network: "none"
+sandbox_memory_limit: "1g"

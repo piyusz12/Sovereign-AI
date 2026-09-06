@@ -51,6 +51,12 @@ def run_async_safely(coro: Coroutine[Any, Any, Any]) -> Any:
 
 
 def _run_coding_tool(user_request: str, context: str = "") -> ToolExecution:
+    from backend.security.enforcement import authorize_action, SecurityException
+    try:
+        authorize_action("agent", "sandbox.execute", metadata={"network_enabled": False})
+    except SecurityException as e:
+        return ToolExecution("python_sandbox", False, "", f"SECURITY DENY: {e}")
+
     outcome = run_async_safely(generate_and_verify(user_request, context))
     return ToolExecution(
         tool_name="python_sandbox",
@@ -63,6 +69,13 @@ async def _execute_search(query: str) -> ToolExecution:
     from backend.rag.embedder import embedding_service
     from backend.rag.retriever import hybrid_retriever
     from backend.rag.reranker import reranker_service
+    from backend.security.enforcement import authorize_action, SecurityException
+    
+    try:
+        authorize_action("agent", "rag.search", metadata={"namespace": "general"})
+    except SecurityException as e:
+        return ToolExecution("document_reasoning", False, "", f"SECURITY DENY: {e}")
+
     try:
         query_embedding = await embedding_service.embed_text(query)
         candidates = await hybrid_retriever.search(
@@ -113,6 +126,12 @@ def _run_unsupported_tool(task_type: str) -> Callable[[str, str], ToolExecution]
 
 async def _execute_vision_async(query: str, context: str = "") -> ToolExecution:
     from backend.router.vision import analyze_vision
+    from backend.security.enforcement import authorize_action, SecurityException
+    
+    try:
+        authorize_action("agent", "inspect_image")
+    except SecurityException as e:
+        return ToolExecution("vision", False, "", f"SECURITY DENY: {e}")
     
     # Extract file path from query, prioritizing quotes to handle spaces
     quoted_match = re.search(r'["\']([a-zA-Z]:\\[^"\']+|/[^"\']+)["\']', query)

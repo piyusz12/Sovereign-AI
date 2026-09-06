@@ -12,6 +12,8 @@ from typing import Optional
 
 import httpx
 
+from backend.settings import settings
+
 logger = logging.getLogger("sovereign.rag.embedder")
 
 DEFAULT_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
@@ -44,8 +46,23 @@ class EmbeddingService:
 
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
         """Generate embeddings for a batch of texts."""
+        
+        # 1. Try Infinity API first (Phase 26)
         try:
-            # 1. Try external Ollama API first
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.post(
+                    f"{settings.infinity_base_url}/v1/embeddings",
+                    json={"model": self.model, "input": texts},
+                )
+                response.raise_for_status()
+                data = response.json()
+                if "data" in data and isinstance(data["data"], list):
+                    return [item["embedding"] for item in data["data"]]
+        except Exception as e:
+            logger.debug("Infinity embedding API unreachable, falling back: %s", e)
+
+        # 2. Try external Ollama API next
+        try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 response = await client.post(
                     f"{self.base_url}/api/embed",
@@ -58,7 +75,7 @@ class EmbeddingService:
         except Exception as e:
             logger.debug("Ollama embedding failed or unreachable: %s", e)
             
-        # 2. Fallback to local sentence-transformers
+        # 3. Fallback to local sentence-transformers
         return await self._call_local_embedder(texts)
         
     async def _call_local_embedder(self, texts: list[str]) -> list[list[float]]:

@@ -107,29 +107,52 @@ async def probe_qdrant(host: str, port: int) -> ProbeResult:
         )
     except Exception as e:
         logger.debug("Qdrant probe failed: %s", e)
-        return ProbeResult(
-            service="qdrant",
-            status="not_reachable",
-            detail=str(e),
-        )
+async def probe_vllm(base_url: str) -> ProbeResult:
+    try:
+        start = time.time()
+        async with httpx.AsyncClient(timeout=PROBE_TIMEOUT) as client:
+            response = await client.get(f"{base_url}/health")
+            latency = round((time.time() - start) * 1000, 2)
+            if response.status_code == 200:
+                return ProbeResult("vllm", "reachable", latency, "vLLM is healthy")
+            return ProbeResult("vllm", "reachable", latency, f"HTTP {response.status_code}")
+    except Exception as e:
+        return ProbeResult("vllm", "not_reachable", detail=str(e))
+
+async def probe_infinity(base_url: str) -> ProbeResult:
+    try:
+        start = time.time()
+        async with httpx.AsyncClient(timeout=PROBE_TIMEOUT) as client:
+            response = await client.get(f"{base_url}/health")
+            latency = round((time.time() - start) * 1000, 2)
+            if response.status_code == 200:
+                return ProbeResult("infinity", "reachable", latency, "Infinity is healthy")
+            return ProbeResult("infinity", "reachable", latency, f"HTTP {response.status_code}")
+    except Exception as e:
+        return ProbeResult("infinity", "not_reachable", detail=str(e))
 
 
-async def probe_all(ollama_url: str, qdrant_host: str, qdrant_port: int) -> dict:
+async def probe_all(ollama_url: str, qdrant_host: str, qdrant_port: int, vllm_url: str = None, infinity_url: str = None) -> dict:
     """
     Run all probes and return a summary dict.
     """
     ollama = await probe_ollama(ollama_url)
     qdrant = await probe_qdrant(qdrant_host, qdrant_port)
-
-    return {
-        "ollama": {
-            "status": ollama.status,
-            "latency_ms": ollama.latency_ms,
-            "detail": ollama.detail,
-        },
-        "qdrant": {
-            "status": qdrant.status,
-            "latency_ms": qdrant.latency_ms,
-            "detail": qdrant.detail,
-        },
+    
+    results = {
+        "ollama": {"status": ollama.status, "latency_ms": ollama.latency_ms, "detail": ollama.detail},
+        "qdrant": {"status": qdrant.status, "latency_ms": qdrant.latency_ms, "detail": qdrant.detail},
     }
+    
+    if vllm_url:
+        vllm = await probe_vllm(vllm_url)
+        results["vllm"] = {"status": vllm.status, "latency_ms": vllm.latency_ms, "detail": vllm.detail}
+        
+    if infinity_url:
+        infinity = await probe_infinity(infinity_url)
+        results["infinity"] = {"status": infinity.status, "latency_ms": infinity.latency_ms, "detail": infinity.detail}
+        
+    from backend.models.manager import model_manager
+    results["model_manager"] = await model_manager.health_check()
+
+    return results

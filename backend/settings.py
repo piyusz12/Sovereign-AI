@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     # --- Reranker ---
     reranker_model: str = "qwen3-reranker-0.6b"
 
+    # --- Infinity (Phase 26+) ---
+    infinity_base_url: str = "http://localhost:7997"
+
     # --- Sandbox ---
     sandbox_image: str = "sovereign-sandbox:latest"
     sandbox_memory_limit: str = "512m"
