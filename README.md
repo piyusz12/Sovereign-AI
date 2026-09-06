@@ -1,203 +1,229 @@
-# 🛡️ Sovereign AI Workbench
+# Sovereign AI Workbench
 
-> Local-first, zero-egress AI system for enterprise document intelligence, code generation, and agentic workflows.
+Local-first AI infrastructure for enterprise document intelligence, code generation, multimodal analysis, and agentic workflows. The workbench keeps inference and data processing on local services, applies RBAC before retrieval, records an audit trail, and exposes a FastAPI API with a React frontend.
 
-[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)]()
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)]()
-[![License](https://img.shields.io/badge/License-Proprietary-red.svg)]()
+## Capabilities
 
----
+- Task classification and model routing for reasoning, coding, and vision requests
+- Chat and streaming chat through the REST API
+- Document upload, parsing, OCR, semantic search, embeddings, and reranking
+- Pre-retrieval RBAC so restricted documents are excluded before they reach the model
+- Sandboxed code execution with configurable CPU, memory, timeout, and network limits
+- DOCX, XLSX, PPTX, and code-package generation
+- LangGraph agents, workflow orchestration, and self-repair loops
+- JWT authentication, policy enforcement, audit events, and sovereignty monitoring
+- OpenAI-compatible endpoints under `/v1`
 
 ## Architecture
 
-```
-SOVEREIGN AI WORKBENCH
-│
-┌─────────────┴─────────────┐
-│         WEB UI / API       │
-└─────────────┬─────────────┘
-              │
-         FastAPI
-              │
-       TASK CLASSIFIER
-              │
-        MODEL ROUTER
-              │
-   ┌──────────┼──────────┐
-   ▼          ▼          ▼
-REASONING   CODING    VISION
-Qwen3-14B  Coder-7B  Qwen3-VL-8B
- 4-bit      4-bit      4-bit
-   │          │          │
-   └──────────┼──────────┘
-              │
-       LANGGRAPH AGENT
-              │
-   ┌──────────┼──────────┐
-   ▼          ▼          ▼
-  RAG      SANDBOX     FILES
-Qdrant     Docker    DOCX/XLSX/PPTX
-   │          │          │
-   └──────────┼──────────┘
-              ▼
-          VERIFIER
-              │
-              ▼
-           OUTPUT
-              │
-   ┌──────────┴──────────┐
-   ▼                     ▼
-AUDIT LOG            SECURITY
-OpenTelemetry    Zero-Egress Monitor
+```text
+React + Vite frontend
+            |
+        FastAPI API
+            |
+   auth / RBAC / audit / policy
+            |
+   task classifier + model router
+       /          |          \
+  reasoning    coding       vision
+       \          |          /
+        agents + workflow registry
+            |
+   RAG + Qdrant | Docker sandbox
+            |
+        local files and outputs
 ```
 
-## Hardware Requirements
+The default local services are Ollama for model inference and Qdrant for vector search. LiteLLM, vLLM, and Infinity endpoints are supported through configuration when those services are available.
 
-| Component | Specification | Role |
-|-----------|--------------|------|
-| GPU | RTX 4060 Laptop 8GB VRAM | LLM inference, vision, embeddings |
-| CPU | Ryzen 7 7840HS | FastAPI, LangGraph, OCR, Docling, file processing |
-| RAM | 16GB (32GB recommended) | Services, model offload, Qdrant |
-| OS | Windows 11 → WSL2 → Ubuntu → Docker | Linux AI stack on Windows |
+## Requirements
 
-**Critical Rule**: ONE heavy model active on GPU at a time.
+- Python 3.11 or newer
+- Node.js 20 or newer and npm
+- Docker Desktop with the WSL2 backend on Windows
+- NVIDIA GPU and compatible Docker GPU support for local model inference
+- 16 GB RAM minimum; 32 GB is recommended
+- Approximately 8 GB of VRAM for the default single-model workflow
 
-## Model Stack
+The system is designed around a single heavy model active on the GPU at a time. Model downloads require network access during setup; runtime services can then be operated locally.
 
-| Function | Model | Quantization | Priority |
-|----------|-------|-------------|----------|
-| Reasoning | Qwen3-14B | 4-bit | Essential |
-| Coding | Qwen2.5-Coder-7B | 4-bit | Essential |
-| Vision | Qwen3-VL-8B | 4-bit | Essential |
-| OCR | PaddleOCR | — | Essential |
-| Document Parser | Docling | — | Essential |
-| Embedding | Qwen3-Embedding-0.6B | — | Essential |
-| Reranker | Qwen3-Reranker-0.6B | — | Important |
-| Vector DB | Qdrant | — | Essential |
-| Agent | LangGraph | — | Essential |
-| Gateway | LiteLLM | — | Essential |
-| Sandbox | Docker | — | Essential |
+## Quick Start
 
-## Project Structure
+### 1. Create the Python environment
 
-```
-sovereign-ai-workbench/
-├── backend/
-│   ├── api/          # FastAPI application & REST endpoints
-│   ├── agent/        # LangGraph agent & self-correction loop
-│   ├── router/       # Model router + task classifier + Ollama client
-│   ├── rag/          # Hybrid & Adaptive RAG pipeline
-│   ├── tools/        # Agent tools & registries
-│   ├── security/     # Pre-retrieval RBAC, JWT auth, and policy enforcement
-│   ├── documents/    # Document ingestion & parsing (Docling/OCR)
-│   ├── generators/   # Deliverable generation (DOCX, XLSX, PPTX, Code ZIP)
-│   └── workflows/    # End-to-end industrial SIH workflow orchestrator
-├── configs/          # YAML configurations
-├── docker/           # Docker compose + Dockerfiles
-├── scripts/          # Setup, benchmark, and verification scripts
-├── tests/            # Test suite
-├── monitoring/       # Sovereignty monitor & zero-egress audits
-├── data/             # Documents, embeddings, output
-└── frontend/         # React/Next.js UI
-```
+PowerShell:
 
-## Quickstart
-
-### 1. Prerequisites (Windows)
 ```powershell
-# Enable WSL2
-wsl --install
-wsl --set-default-version 2
-# Install Docker Desktop with WSL2 backend + GPU support
-```
-
-### 2. Setup (WSL2 Ubuntu)
-```bash
-cd ~/sovereign-ai-workbench
-python3 -m venv .venv
-source .venv/bin/activate
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 3. Run Backend
+Linux or WSL2:
+
 ```bash
-python start.py
-# or via uvicorn directly
-uvicorn backend.api.main:app --host 127.0.0.1 --port 8000
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -r requirements.txt
 ```
 
-### 4. Verification & Testing
+### 2. Start local dependencies
+
+From the repository root:
+
 ```bash
-# Verify Phase 4 (Ollama Integration)
-python scripts/verify_phase4.py
+docker compose -f docker/docker-compose.yml up -d ollama qdrant
+```
 
-# Verify Phase 18 (Enterprise RBAC Enforcement)
+Pull the models configured by the application. The defaults are:
+
+```bash
+ollama pull qwen3:14b
+ollama pull qwen2.5-coder:7b
+ollama pull llama3.2-vision:latest
+```
+
+### 3. Start the backend
+
+```bash
+python start.py
+```
+
+The API listens on `http://127.0.0.1:8080` by default. Interactive API documentation is available at `/docs`; the ReDoc view is available at `/redoc`.
+
+### 4. Start the frontend
+
+In a second terminal:
+
+```bash
+cd frontend
+npm install
+npm run dev -- --host 127.0.0.1 --port 3000
+```
+
+Open `http://127.0.0.1:3000`. The backend CORS configuration currently allows the local frontend on port `3000`.
+
+### Docker-only backend
+
+To run the backend and its local dependencies together:
+
+```bash
+docker compose -f docker/docker-compose.yml up --build
+```
+
+## Configuration
+
+Settings are loaded from environment variables and an optional `.env` file. Defaults are defined in [`backend/settings.py`](backend/settings.py). Common overrides include:
+
+```dotenv
+APP_HOST=127.0.0.1
+APP_PORT=8080
+DEBUG=true
+LOG_LEVEL=INFO
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_REASONING_MODEL=qwen3:14b
+OLLAMA_CODING_MODEL=qwen2.5-coder:7b
+OLLAMA_VISION_MODEL=llama3.2-vision:latest
+QDRANT_HOST=localhost
+QDRANT_PORT=6333
+JWT_SECRET_KEY=replace-this-in-development
+SANDBOX_NETWORK=none
+```
+
+Do not commit production secrets. In particular, replace the development JWT secret before exposing the API beyond a local machine.
+
+## API Surface
+
+| Area | Representative endpoints |
+|---|---|
+| Health and sovereignty | `GET /health`, `GET /sovereignty`, `GET /api/v1/sovereignty/status` |
+| Authentication | `POST /api/v1/auth/login`, `GET /api/v1/auth/me` |
+| Chat and routing | `POST /api/v1/chat`, `POST /api/v1/chat/stream`, `POST /api/v1/classify` |
+| Coding and vision | `POST /api/v1/code/generate`, `POST /api/v1/vision/analyze`, `POST /api/v1/execute` |
+| Documents and RAG | `POST /api/v1/upload`, `POST /api/v1/search` |
+| Generation and workflows | `POST /api/v1/generate`, `POST /api/v1/workflows/run` |
+| Models | `GET /api/v1/models`, `GET /api/v1/models/status`, `POST /api/v1/models/route` |
+| Audit and monitoring | `GET /api/v1/audit/events`, `GET /api/v1/sovereignty/status` |
+| OpenAI compatibility | `/v1` |
+
+Endpoint schemas and live request examples are available in the Swagger UI at `http://127.0.0.1:8080/docs`.
+
+## Security Model
+
+- **Local-first execution:** model inference, document processing, and generated outputs use local services by default.
+- **Pre-retrieval authorization:** RBAC filters are applied to vector searches before context is assembled for a model.
+- **Sandboxed execution:** generated code runs with configurable resource limits and a disabled network by default.
+- **Auditability:** requests and workflow activity are recorded through the audit middleware and audit API.
+- **Sovereignty signals:** responses include sovereignty headers, and the sovereignty service tracks external network activity.
+
+This is an actively developed workbench, not a turnkey production security boundary. Review secrets, container permissions, network policy, model provenance, and persistence before deployment in a regulated environment.
+
+## Project Layout
+
+```text
+backend/
+  api/             FastAPI application, schemas, routes, health checks
+  agent/           LangGraph agent and reasoning loops
+  coding_agent/    Repository-aware code generation and repair
+  documents/       Ingestion, parsing, OCR, chunking, and metadata
+  generators/      DOCX, XLSX, PPTX, and code-package generation
+  model_gateway/   Local model gateway integrations
+  models/          Model registry and loading
+  rag/             Retrieval, embeddings, reranking, and context assembly
+  router/          Task classification and model routing
+  security/        Authentication, RBAC, policy, and enforcement
+  sovereignty/     Network sovereignty monitoring
+  tools/           Tool implementations and registries
+  workflows/       End-to-end workflow orchestration
+configs/           YAML model, policy, RBAC, and service configuration
+data/              Documents, processed files, embeddings, outputs, and audit data
+docker/            Compose file and backend/sandbox Dockerfiles
+frontend/          React 19 + TypeScript + Vite application
+monitoring/        Sovereignty and observability helpers
+scripts/           Setup, benchmark, packaging, and verification utilities
+
+```
+
+## Testing and Quality Checks
+
+Run the Python test suite from the repository root:
+
+```bash
+pytest
+```
+
+Useful focused checks include:
+
+```bash
+pytest tests/test_api.py tests/test_rbac.py tests/test_sovereignty.py
 python test_rbac_endpoints.py
-
-# Verify Phase 20 (Deliverable Generation: DOCX, XLSX, PPTX, ZIP)
 python test_generators.py
-
-# Verify Phase 21 (Flagship End-to-End SIH Workflows)
 python test_sih_workflows.py
 ```
 
-## Flagship SIH Industrial Workflows
+Validate the frontend with:
 
-### 1. Multimodal Inspection & Defect Approval Note
-- **Endpoint**: `POST /api/v1/workflows/run` (`workflow_name: "inspection"`)
-- **Pipeline**:
-  1. Ingests multimodal engineering inspection reports / diagrams via Vision pipeline.
-  2. Retrieves confidential compliance standards and SOPs via Adaptive RAG with pre-retrieval RBAC.
-  3. Executes tolerance calculations and validation in isolated Docker sandbox.
-  4. Generates an executive `.docx` / `.pdf` approval note deliverable with verifiable audit trail.
+```bash
+cd frontend
+npm run lint
+npm run build
+```
 
-### 2. Confidential Data Analysis & Verified Code Delivery
-- **Endpoint**: `POST /api/v1/workflows/run` (`workflow_name: "coding"`)
-- **Pipeline**:
-  1. Ingests internal datasets / engineering queries.
-  2. Synthesizes executable Python data analysis pipelines via dedicated coder model.
-  3. Runs code in sandboxed execution environment with automated self-repair loops.
-  4. Delivers verified calculations, data summaries, and production-ready `.zip` code packages.
+## Data and Generated Files
 
-## Phase Roadmap
+Runtime data is stored under `data/` and is intentionally excluded from the application source layout:
 
-| Phase | Goal | Status |
-|-------|------|--------|
-| 0 | Architecture / Repository | ✅ |
-| 1 | WSL2 + Ubuntu | ✅ |
-| 2 | NVIDIA + CUDA + Docker GPU | ✅ |
-| 3 | Python Backend | ✅ |
-| 4 | Qwen3-14B via Ollama & Router | ✅ |
-| 5 | Local Model API | ✅ |
-| 6 | Task Router | ✅ |
-| 7 | Coder Model | ✅ |
-| 8 | Vision Model | ✅ |
-| 9 | Tool Framework | ✅ |
-| 10 | Docker Sandbox | ✅ |
-| 11 | LangGraph Agent | ✅ |
-| 12-13 | Docling + PaddleOCR | ✅ |
-| 14-16 | Qdrant + Embeddings + Reranker | ✅ |
-| 17 | Hybrid RAG | ✅ |
-| 18 | Enterprise RBAC & Pre-Retrieval Clearance | ✅ |
-| 19 | Adaptive RAG & Self-Correction | ✅ |
-| 20 | Deliverable Generation (DOCX/XLSX/PPTX/Code) | ✅ |
-| 21 | Flagship SIH Workflows (Inspection & Code Gen) | ✅ |
-| 22 | Coding-Agent Flagship Workflow | ✅ |
-| 23 | Audit Logging | ✅ |
-| 24 | Sovereignty Monitor | ✅ |
-| 25 | Security Layer (Policy Engine & Hardening) | ⬜ |
-| 26 | Production Hardening / Offline Deployment | ⬜ |
+- `data/documents/` - uploaded source documents
+- `data/processed/` - parsed and chunked document data
+- `data/embeddings/` - embedding artifacts
+- `data/output/` - generated deliverables
+- `data/audit/` - audit log files
 
-## Key Principles
+Back up or clear these directories according to your retention policy. Do not place confidential data in the repository history.
 
-1. **Zero Egress** — No data leaves the local machine. Ever.
-2. **Single GPU Discipline** — One heavy model loaded at a time on 8GB VRAM.
-3. **Fail-Closed RAG** — Refuse to answer when evidence is insufficient.
-4. **Pre-Retrieval RBAC** — Filter documents before retrieval, not after.
-5. **Sandboxed Execution** — All generated code runs in isolated Docker containers.
-6. **Verifiable Sovereignty** — Network monitoring proves no external calls.
+## License
 
----
-
-*Built for Smart India Hackathon — Demonstrating sovereign AI on consumer hardware.*
+This project is proprietary. Refer to the project owner for licensing and distribution terms.
 
