@@ -4,7 +4,8 @@ Sovereign AI Workbench — Coder Service Bridge
 from typing import Optional
 from dataclasses import dataclass
 
-from backend.models import route_task, get_provider, RoutingRequest, TaskType
+from backend.models import route_task, RoutingRequest, TaskType
+from backend.model_gateway import model_gateway, GatewayInferenceRequest, ChatMessage
 
 class CoderServiceError(RuntimeError):
     """Raised when code generation fails."""
@@ -34,15 +35,18 @@ async def generate_code(
         # Phase 27: Ask the Model Router for a CODING model
         route = route_task(RoutingRequest(task_type=TaskType.CODING))
         
-        provider = get_provider()
-        
-        messages = [
-            {"role": "system", "content": "You are a coding agent. Always return output enclosed in ```python code blocks."},
-            {"role": "user", "content": f"{context}\n\nTask: {task_description}"}
-        ]
+        request = GatewayInferenceRequest(
+            model=route.selected_model,
+            messages=[
+                ChatMessage(role="system", content="You are a coding agent. Always return output enclosed in ```python code blocks."),
+                ChatMessage(role="user", content=f"{context}\n\nTask: {task_description}")
+            ],
+            temperature=0.3
+        )
         
         # We generate the text using the selected model
-        response_text = await provider.generate(route.selected_model, messages, temperature=0.3)
+        response = await model_gateway.generate(request)
+        response_text = response.content
         
         # Simple extraction of the code block
         if "```python" in response_text:

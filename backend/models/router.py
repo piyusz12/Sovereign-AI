@@ -4,7 +4,7 @@ import logging
 from backend.models.schemas import RoutingRequest, RoutingResponse, ModelCapability, TaskType, ModelStatus
 from backend.models.registry import get_all_models
 from backend.models.manager import can_load_model, load_model
-from backend.audit.logger import audit_logger, SecurityEvent
+from backend.audit.service import audit_service
 
 logger = logging.getLogger(__name__)
 
@@ -54,11 +54,10 @@ def route_task(request: RoutingRequest) -> RoutingResponse:
             selected_model = candidate
             reason = f"Model {candidate.id} already loaded and supports required capabilities."
             break
-        elif can_load_model(candidate.vram_estimate_mb):
-            if load_model(candidate.id):
-                selected_model = candidate
-                reason = f"Dynamically loaded {candidate.id} to satisfy {request.task_type.value}."
-                break
+        elif load_model(candidate.id):
+            selected_model = candidate
+            reason = f"Dynamically loaded {candidate.id} to satisfy {request.task_type.value}."
+            break
                 
     if not selected_model:
         raise RuntimeError("Insufficient VRAM to load any candidate model for this task.")
@@ -70,13 +69,13 @@ def route_task(request: RoutingRequest) -> RoutingResponse:
     )
     
     # Audit logging for Sovereignty
-    audit_logger.log_event(
-        event_type="model.selected",
-        user_id="system",
-        resource=selected_model.id,
+    audit_service.log(
         action=f"route_task({request.task_type.value})",
         status="success",
-        details={
+        user_id="system",
+        resource_id=selected_model.id,
+        resource_type="model",
+        metadata={
             "trace_id": request.trace_id,
             "reason": reason,
             "local": True

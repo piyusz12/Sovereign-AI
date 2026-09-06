@@ -2,8 +2,6 @@ from .schemas import TaskType, ModelCapability, ModelInfo, RoutingRequest, Routi
 from .registry import get_all_models, get_model, update_model_status
 from .router import route_task
 from .manager import get_vram_usage, load_model, unload_model
-from .provider import ModelProvider, get_provider
-
 __all__ = [
     "TaskType",
     "ModelCapability",
@@ -18,6 +16,4 @@ __all__ = [
     "get_vram_usage",
     "load_model",
     "unload_model",
-    "ModelProvider",
-    "get_provider",
 ]

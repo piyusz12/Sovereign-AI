@@ -12,7 +12,9 @@ interface ModelInfo {
 
 export function ModelStatus() {
   const [models, setModels] = useState<ModelInfo[]>([]);
-  const [vram, setVram] = useState({ used: 0, max: 8192 });
+  const [vram, setVram] = useState({ used: 0, max: 8192, status: 'GREEN' });
+  const [hardware, setHardware] = useState({ name: 'Unknown', ram_mb: 0 });
+  const [queueDepth, setQueueDepth] = useState(0);
 
   useEffect(() => {
     // In a real app, this would be a WebSocket or SSE, 
@@ -22,7 +24,11 @@ export function ModelStatus() {
         const res = await fetch('http://localhost:8000/api/v1/models/status');
         const data = await res.json();
         setModels(data.models);
-        setVram({ used: data.vram_used_mb, max: data.max_vram_mb });
+        setVram({ used: data.vram_used_mb, max: data.max_vram_mb, status: data.vram_status || 'GREEN' });
+        if (data.hardware_profile) {
+            setHardware(data.hardware_profile);
+        }
+        setQueueDepth(data.queue_depth || 0);
       } catch (err) {
         console.error("Failed to fetch model status", err);
       }
@@ -52,13 +58,30 @@ export function ModelStatus() {
         <div>
           <div className="flex justify-between text-xs text-slate-400 mb-2 font-medium">
             <span className="flex items-center"><Cpu className="w-3 h-3 mr-1" /> VRAM USAGE</span>
-            <span>{(vram.used / 1024).toFixed(1)} / {(vram.max / 1024).toFixed(1)} GB</span>
+            <span className={vram.status === 'RED' ? 'text-rose-400' : vram.status === 'YELLOW' ? 'text-amber-400' : 'text-emerald-400'}>
+                {(vram.used / 1024).toFixed(1)} / {(vram.max / 1024).toFixed(1)} GB
+            </span>
           </div>
-          <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+          <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden mb-4">
             <div 
-              className={`h-full rounded-full ${vramPercent > 85 ? 'bg-rose-500' : 'bg-emerald-500'}`}
+              className={`h-full rounded-full ${vram.status === 'RED' ? 'bg-rose-500' : vram.status === 'YELLOW' ? 'bg-amber-500' : 'bg-emerald-500'}`}
               style={{ width: `${vramPercent}%`, transition: 'width 0.5s ease' }}
             />
+          </div>
+          
+          <div className="grid grid-cols-2 gap-4 text-xs">
+            <div className="bg-slate-950 p-2 rounded border border-slate-800">
+                <div className="text-slate-500 mb-1 font-medium tracking-wider">HARDWARE</div>
+                <div className="text-slate-300 font-mono text-[10px] uppercase truncate">{hardware.name}</div>
+                <div className="text-slate-400 mt-0.5">{(hardware.ram_mb / 1024).toFixed(0)} GB RAM</div>
+            </div>
+            <div className="bg-slate-950 p-2 rounded border border-slate-800">
+                <div className="text-slate-500 mb-1 font-medium tracking-wider">GPU QUEUE</div>
+                <div className="flex items-center mt-1">
+                    <span className={`text-lg font-semibold ${queueDepth > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>{queueDepth}</span>
+                    <span className="text-slate-500 ml-2">jobs</span>
+                </div>
+            </div>
           </div>
         </div>
 

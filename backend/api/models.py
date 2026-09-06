@@ -9,9 +9,12 @@ from backend.models import (
     RoutingResponse,
     ModelInfo,
     load_model,
-    unload_model,
-    get_provider
+    unload_model
 )
+from backend.optimization.vram import vram_manager
+from backend.optimization.hardware import current_hardware
+from backend.optimization.scheduler import gpu_scheduler
+from backend.model_gateway import check_gateway_health
 
 router = APIRouter(prefix="/models", tags=["models"])
 
@@ -22,10 +25,19 @@ async def list_models():
 
 @router.get("/status")
 async def model_status() -> Dict[str, Any]:
-    """Get overall system VRAM and model health."""
+    """Get overall system VRAM and model health (Phase 28 Optimizations)."""
+    vram_state = vram_manager.get_state()
+    gateway_health = await check_gateway_health()
     return {
-        "vram_used_mb": get_vram_usage(),
-        "max_vram_mb": 8192,
+        "vram_used_mb": vram_state.used_mb,
+        "max_vram_mb": vram_state.total_mb,
+        "vram_status": vram_state.status,
+        "queue_depth": gpu_scheduler.queue_depth,
+        "hardware_profile": {
+            "name": current_hardware.name,
+            "ram_mb": current_hardware.system_ram_mb
+        },
+        "gateway_health": gateway_health,
         "models": get_all_models()
     }
 

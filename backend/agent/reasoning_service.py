@@ -85,7 +85,8 @@ def _extract_json(text: str) -> dict[str, Any]:
 def _chat(system_prompt: str, user_prompt: str, *, timeout: float = DEFAULT_TIMEOUT_SECONDS, max_retries: int = 3) -> str:
     import time
     import asyncio
-    from backend.models import route_task, get_provider, RoutingRequest, TaskType
+    from backend.models import route_task, RoutingRequest, TaskType
+    from backend.model_gateway import model_gateway, GatewayInferenceRequest, ChatMessage
     
     last_error = None
     messages = [
@@ -98,14 +99,14 @@ def _chat(system_prompt: str, user_prompt: str, *, timeout: float = DEFAULT_TIME
         try:
             # Phase 27: Select the reasoning model dynamically
             route = route_task(RoutingRequest(task_type=TaskType.GENERAL_CHAT))
-            provider = get_provider()
-            
             # Since this function is sync and runs in a thread pool, we run the async code inline
-            content = asyncio.run(provider.generate(
-                route.selected_model, 
-                messages, 
+            request = GatewayInferenceRequest(
+                model=route.selected_model,
+                messages=[ChatMessage(**m) for m in messages],
                 temperature=0.1
-            ))
+            )
+            response = asyncio.run(model_gateway.generate(request))
+            content = response.content
             
             duration = (time.time() - start_time) * 1000
             

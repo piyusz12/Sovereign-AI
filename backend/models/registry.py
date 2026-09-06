@@ -24,7 +24,8 @@ _MODELS_DB: Dict[str, ModelInfo] = {
         quantization="4-bit",
         vram_estimate_mb=4200,
         status=ModelStatus.READY,
-        loaded=True
+        loaded=True,
+        backend="vllm"
     ),
     "vision-local": ModelInfo(
         id="vision-local",

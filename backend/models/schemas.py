@@ -33,6 +33,7 @@ class ModelInfo(BaseModel):
     quantization: Optional[str] = None
     vram_estimate_mb: int
     enabled: bool = True
+    backend: str = "ollama"
     
     # Runtime status
     status: ModelStatus = ModelStatus.UNAVAILABLE
