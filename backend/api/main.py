@@ -25,7 +25,8 @@ from backend.audit.router import router as audit_api_router
 from backend.sovereignty.router import router as sovereignty_router
 from backend.security.router import router as security_router
 from backend.sovereignty.service import sovereignty_service
-from backend.router.model_registry import model_registry
+from backend.models import load_model
+from backend.api.models import router as models_router
 from backend.workflows.registry import init_workflows
 
 logger = logging.getLogger("sovereign.api")
@@ -45,7 +46,7 @@ async def lifespan(app: FastAPI):
     # Auto-warm default model if Ollama is running
     try:
         logger.info("Auto-warming default reasoning model...")
-        await model_registry.load_model("reasoning")
+        load_model("reasoning-local")
     except Exception as e:
         logger.warning("Failed to warm up default model: %s", e)
         
@@ -197,4 +198,5 @@ app.include_router(api_router, prefix="/api/v1")
 app.include_router(audit_api_router, prefix="/api/v1")
 app.include_router(sovereignty_router, prefix="/api/v1")
 app.include_router(security_router, prefix="/api/v1")
+app.include_router(models_router, prefix="/api/v1")
 app.include_router(openai_router, prefix="/v1")

@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #3b82f6;
+  --color-primary-dark: #2563eb;
+  --color-surface: #1e293b;
+  --color-surface-hover: #334155;
+  --color-border: #475569;
+}
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+html, body {
+  @apply bg-slate-900 text-slate-100 antialiased h-full w-full overflow-hidden;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+#root {
+  @apply h-full w-full;
+}

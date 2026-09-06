@@ -84,30 +84,35 @@ def _extract_json(text: str) -> dict[str, Any]:
 
 def _chat(system_prompt: str, user_prompt: str, *, timeout: float = DEFAULT_TIMEOUT_SECONDS, max_retries: int = 3) -> str:
     import time
-    
-    payload = {
-        "model": REASONING_MODEL_NAME,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        "stream": False,
-        "options": {"temperature": 0.1},
-    }
+    import asyncio
+    from backend.models import route_task, get_provider, RoutingRequest, TaskType
     
     last_error = None
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+
     for attempt in range(1, max_retries + 1):
         start_time = time.time()
         try:
-            resp = httpx.post(f"{OLLAMA_BASE_URL}/api/chat", json=payload, timeout=timeout)
-            resp.raise_for_status()
-            content = resp.json().get("message", {}).get("content", "")
+            # Phase 27: Select the reasoning model dynamically
+            route = route_task(RoutingRequest(task_type=TaskType.GENERAL_CHAT))
+            provider = get_provider()
+            
+            # Since this function is sync and runs in a thread pool, we run the async code inline
+            content = asyncio.run(provider.generate(
+                route.selected_model, 
+                messages, 
+                temperature=0.1
+            ))
+            
             duration = (time.time() - start_time) * 1000
             
             if not content:
                 raise ReasoningServiceError("Empty response from reasoning model.")
                 
-            logger.info("Reasoning inference completed in %.2fms (attempt %d)", duration, attempt)
+            logger.info("Reasoning inference (via %s) completed in %.2fms (attempt %d)", route.selected_model, duration, attempt)
             
             # Fast-fail JSON validation if system prompt requested JSON
             if "JSON" in system_prompt:
@@ -119,19 +124,14 @@ def _chat(system_prompt: str, user_prompt: str, *, timeout: float = DEFAULT_TIME
         except ReasoningServiceError as exc:
             last_error = exc
             logger.warning("Reasoning validation failed on attempt %d: %s", attempt, exc)
-            # Instruct model to fix its JSON format for the next attempt
             if "content" in locals() and content:
-                payload["messages"].append({"role": "assistant", "content": content})
-            payload["messages"].append({
+                messages.append({"role": "assistant", "content": content})
+            messages.append({
                 "role": "user", 
                 "content": f"Your last response failed JSON validation: {exc}. Output ONLY valid JSON."
             })
             
-        except httpx.ConnectError as exc:
-            raise ReasoningServiceError(
-                f"Cannot connect to Ollama at {OLLAMA_BASE_URL}. Ensure Ollama is running."
-            ) from exc
-        except httpx.HTTPError as exc:
+        except Exception as exc:
             raise ReasoningServiceError(f"Reasoning model request failed: {exc}") from exc
             
     raise ReasoningServiceError(f"Failed to get valid response after {max_retries} attempts. Last error: {last_error}")

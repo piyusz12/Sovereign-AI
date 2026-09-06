@@ -1,27 +1,18 @@
 """
 Sovereign AI Workbench — Coder Service Bridge
-
-Bridges the standalone synchronous/async repair loop with the asynchronous
-ModelRouter built in Phase 7.
 """
-
-from __future__ import annotations
-
 from typing import Optional
 from dataclasses import dataclass
 
-from backend.router.router import model_router
-
+from backend.models import route_task, get_provider, RoutingRequest, TaskType
 
 class CoderServiceError(RuntimeError):
     """Raised when code generation fails."""
     pass
 
-
 @dataclass
 class CodeGenerationResult:
     code: str
-
 
 async def generate_code(
     task_description: str,
@@ -29,9 +20,8 @@ async def generate_code(
     error_output: Optional[str] = None,
 ) -> CodeGenerationResult:
     """
-    Generate or repair Python code using the router's coding model.
+    Generate or repair Python code using the new Phase 27 Model Router.
     """
-    # Build context if this is a repair attempt
     context = ""
     if prior_code or error_output:
         context = "You are repairing broken code.\n"
@@ -41,21 +31,31 @@ async def generate_code(
             context += f"Error Output:\n```text\n{error_output}\n```\n"
 
     try:
-        # Call the actual async router
-        result = await model_router.generate_code(
-            prompt=task_description,
-            language="python",
-            context=context if context else None,
-            temperature=0.3,
-        )
-
-        if not result.success or not result.code_blocks:
-            raise CoderServiceError(
-                result.error or "Failed to generate valid code blocks."
-            )
-
-        # Return the first code block (the most relevant one)
-        return CodeGenerationResult(code=result.code_blocks[0].code)
+        # Phase 27: Ask the Model Router for a CODING model
+        route = route_task(RoutingRequest(task_type=TaskType.CODING))
+        
+        provider = get_provider()
+        
+        messages = [
+            {"role": "system", "content": "You are a coding agent. Always return output enclosed in ```python code blocks."},
+            {"role": "user", "content": f"{context}\n\nTask: {task_description}"}
+        ]
+        
+        # We generate the text using the selected model
+        response_text = await provider.generate(route.selected_model, messages, temperature=0.3)
+        
+        # Simple extraction of the code block
+        if "```python" in response_text:
+            code = response_text.split("```python")[1].split("```")[0].strip()
+        elif "```" in response_text:
+            code = response_text.split("```")[1].split("```")[0].strip()
+        else:
+            code = response_text.strip()
+            
+        if not code:
+            raise CoderServiceError("Failed to extract code blocks from output.")
+            
+        return CodeGenerationResult(code=code)
 
     except Exception as e:
         if isinstance(e, CoderServiceError):
