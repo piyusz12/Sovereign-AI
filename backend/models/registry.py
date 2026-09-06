@@ -41,22 +41,26 @@ _MODELS_DB: Dict[str, ModelInfo] = {
     "embedding-local": ModelInfo(
         id="embedding-local",
         name="bge-m3",
+        version="v1",
         role="embedding",
         capabilities=[ModelCapability.EMBEDDING],
         context_length=8192,
         vram_estimate_mb=800,
         status=ModelStatus.READY,
-        loaded=True
+        loaded=True,
+        backend="infinity"
     ),
     "reranker-local": ModelInfo(
         id="reranker-local",
         name="bge-reranker-v2-m3",
+        version="v1",
         role="reranking",
         capabilities=[ModelCapability.RERANKER],
         context_length=8192,
         vram_estimate_mb=600,
         status=ModelStatus.READY,
-        loaded=True
+        loaded=True,
+        backend="infinity"
     )
 }
 

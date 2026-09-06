@@ -26,7 +26,7 @@ from backend.api.openai_schemas import (
     ModelCard,
 )
 from backend.router.router import model_router
-from backend.router.model_registry import model_registry
+from backend.models.registry import get_all_models
 
 logger = logging.getLogger("sovereign.openai_api")
 
@@ -39,10 +39,10 @@ async def list_models():
     OpenAI compatible endpoint to list available models.
     Maps our registry's model IDs to OpenAI ModelCards.
     """
-    models = model_registry.list_models()
+    models = get_all_models()
     return ModelListResponse(
         data=[
-            ModelCard(id=m["model_id"])
+            ModelCard(id=m.id, created=int(time.time()), owned_by="sovereign")
             for m in models
         ]
     )

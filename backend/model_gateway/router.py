@@ -5,10 +5,14 @@ from typing import AsyncIterator, Dict
 from backend.model_gateway.schemas import (
     GatewayInferenceRequest,
     GatewayInferenceResponse,
-    GatewayStreamChunk
+    GatewayStreamChunk,
+    GatewayEmbeddingRequest,
+    GatewayEmbeddingResponse,
+    GatewayRerankRequest,
+    GatewayRerankResponse
 )
 from backend.model_gateway.provider import LLMProvider
-from backend.model_gateway.client import OllamaGatewayProvider, VLLMGatewayProvider
+from backend.model_gateway.client import OllamaGatewayProvider, VLLMGatewayProvider, InfinityGatewayProvider
 from backend.models.registry import get_model
 from backend.audit.service import audit_service
 from backend.optimization.scheduler import gpu_scheduler
@@ -28,6 +32,8 @@ class ModelGateway:
         if backend_type not in self._providers:
             if backend_type == "vllm":
                 self._providers[backend_type] = VLLMGatewayProvider()
+            elif backend_type == "infinity":
+                self._providers[backend_type] = InfinityGatewayProvider()
             else:
                 self._providers[backend_type] = OllamaGatewayProvider()
                 
@@ -84,6 +90,43 @@ class ModelGateway:
                     yield chunk
         finally:
             gpu_scheduler.queue_depth -= 1
+
+    async def embed(self, request: GatewayEmbeddingRequest) -> GatewayEmbeddingResponse:
+        provider = self._get_provider(request.model)
+        
+        async def _run():
+            return await asyncio.wait_for(provider.embed(request), timeout=request.timeout)
+            
+        # We also schedule embeddings on the GPU queue so it doesn't OOM alongside heavy models
+        response: GatewayEmbeddingResponse = await gpu_scheduler.schedule(f"embed-{request.model}", priority=2, coro=_run())
+        
+        audit_service.log(
+            action="model_gateway.embed",
+            status="success",
+            user_id="system",
+            resource_id=request.model,
+            resource_type="model",
+            metadata=response.metadata.model_dump()
+        )
+        return response
+
+    async def rerank(self, request: GatewayRerankRequest) -> GatewayRerankResponse:
+        provider = self._get_provider(request.model)
+        
+        async def _run():
+            return await asyncio.wait_for(provider.rerank(request), timeout=request.timeout)
+            
+        response: GatewayRerankResponse = await gpu_scheduler.schedule(f"rerank-{request.model}", priority=2, coro=_run())
+        
+        audit_service.log(
+            action="model_gateway.rerank",
+            status="success",
+            user_id="system",
+            resource_id=request.model,
+            resource_type="model",
+            metadata=response.metadata.model_dump()
+        )
+        return response
 
     async def load_model(self, model_id: str) -> bool:
         provider = self._get_provider(model_id)

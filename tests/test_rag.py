@@ -5,6 +5,7 @@ Verifies retrieval, reranking, and fail-closed behavior.
 """
 
 import pytest
+from unittest.mock import patch
 from backend.rag.retriever import BM25Retriever
 from backend.rag.adaptive import AdaptiveRAG
 
@@ -84,6 +85,8 @@ class TestAdaptiveRAG:
     async def test_insufficient_evidence_refusal(self):
         """RAG refuses to answer when no evidence found (fail-closed)."""
         rag = AdaptiveRAG(max_attempts=2)
-        result = await rag.query("something completely irrelevant xyz123")
-        assert result.status == "insufficient_evidence"
-        assert "sufficient internal evidence" in result.answer.lower() or "reliable" in result.answer.lower()
+        with patch.object(rag.embedder, "embed_text", return_value=[0.1] * 384):
+            with patch.object(rag.retriever, "search_vector", return_value=[]):
+                result = await rag.query("something completely irrelevant xyz123")
+                assert result.status == "insufficient_evidence"
+                assert "sufficient internal evidence" in result.answer.lower() or "reliable" in result.answer.lower()

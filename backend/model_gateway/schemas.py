@@ -32,3 +32,22 @@ class GatewayStreamChunk(BaseModel):
     content: str
     done: bool
     metadata: Optional[InferenceMetadata] = None
+
+class GatewayEmbeddingRequest(BaseModel):
+    model: str
+    input: List[str]
+    timeout: float = 60.0
+
+class GatewayEmbeddingResponse(BaseModel):
+    embeddings: List[List[float]]
+    metadata: InferenceMetadata
+
+class GatewayRerankRequest(BaseModel):
+    model: str
+    query: str
+    documents: List[str]
+    timeout: float = 60.0
+
+class GatewayRerankResponse(BaseModel):
+    scores: List[float]
+    metadata: InferenceMetadata

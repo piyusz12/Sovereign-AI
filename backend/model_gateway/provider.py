@@ -3,7 +3,15 @@ from __future__ import annotations
 import abc
 from typing import AsyncIterator
 
-from backend.model_gateway.schemas import GatewayInferenceRequest, GatewayInferenceResponse, GatewayStreamChunk
+from backend.model_gateway.schemas import (
+    GatewayInferenceRequest, 
+    GatewayInferenceResponse, 
+    GatewayStreamChunk,
+    GatewayEmbeddingRequest,
+    GatewayEmbeddingResponse,
+    GatewayRerankRequest,
+    GatewayRerankResponse
+)
 
 class LLMProvider(abc.ABC):
     """
@@ -19,6 +27,14 @@ class LLMProvider(abc.ABC):
         ...
         if False:
             yield  # pragma: no cover
+
+    @abc.abstractmethod
+    async def embed(self, request: GatewayEmbeddingRequest) -> GatewayEmbeddingResponse:
+        ...
+
+    @abc.abstractmethod
+    async def rerank(self, request: GatewayRerankRequest) -> GatewayRerankResponse:
+        ...
 
     @abc.abstractmethod
     async def load_model(self, model_id: str) -> bool:

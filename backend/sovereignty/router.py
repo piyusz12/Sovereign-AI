@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from backend.sovereignty.schemas import SovereigntyStatus
 from backend.sovereignty.service import sovereignty_service
-from backend.security.dependencies import require_role
+
 
 router = APIRouter(prefix="/sovereignty", tags=["Sovereignty"])
 

@@ -18,8 +18,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
-from backend.router.providers.base import BaseProvider
-from backend.router.providers.factory import get_provider
+
 
 logger = logging.getLogger("sovereign.model_registry")
 

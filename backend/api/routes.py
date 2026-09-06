@@ -44,7 +44,7 @@ from backend.api.schemas import (
     VisionAnalyzeRequest,
     VisionAnalyzeResponse,
 )
-from backend.router.model_registry import model_registry
+from backend.models.registry import get_all_models
 from backend.router.task_classifier import task_classifier
 from backend.router.router import model_router
 from backend.router.ollama_client import ollama_client
@@ -280,116 +280,6 @@ async def generate_code(request: CodeGenerateRequest):
     )
 
 
-# ── Model Management ──────────────────────────────────────────────────────────
-
-
-class ModelLoadRequest(BaseModel):
-    """Request to load a model category."""
-    category: str = Field(
-        ...,
-        description="Model category to load: reasoning, coding, vision, embedding, reranker",
-    )
-
-
-@router.post("/models/load", dependencies=[Depends(require_permission("model.configure"))])
-async def load_model(request: ModelLoadRequest):
-    """
-    Explicitly load a model into VRAM. If another heavy model is loaded,
-    it will be unloaded first (single-GPU discipline).
-    """
-    model_config = model_registry.get_model(request.category)
-    if not model_config:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Unknown model category: {request.category}",
-        )
-
-    # Check if model is available in Ollama
-    available = await model_registry.ensure_model_available(request.category)
-    if not available:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                f"Model '{model_config.model_id}' is not pulled in Ollama. "
-                f"Run: ollama pull {model_config.model_id}"
-            ),
-        )
-
-    start = time.time()
-    loaded = await model_registry.load_model(request.category)
-    duration = round((time.time() - start) * 1000, 2)
-
-    return {
-        "status": "loaded",
-        "model": loaded.name,
-        "model_id": loaded.model_id,
-        "category": request.category,
-        "vram_used_mb": loaded.vram_used_mb,
-        "load_time_ms": duration,
-        "active_heavy_model": model_registry.get_active_heavy_model(),
-    }
-
-
-@router.post("/models/unload", dependencies=[Depends(require_permission("model.configure"))])
-async def unload_model(request: ModelLoadRequest):
-    """Explicitly unload a model from VRAM."""
-    model_config = model_registry.get_model(request.category)
-    if not model_config:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Unknown model category: {request.category}",
-        )
-
-    await model_registry.unload_model(request.category)
-
-    return {
-        "status": "unloaded",
-        "model": model_config.name,
-        "category": request.category,
-        "active_heavy_model": model_registry.get_active_heavy_model(),
-    }
-
-
-@router.get("/models/status", dependencies=[Depends(require_permission("all"))])
-async def models_status():
-    """
-    Real GPU status from Ollama ps + registry state.
-    Shows which models are loaded, VRAM usage, and available capacity.
-    """
-    # Sync registry with Ollama's actual state
-    await model_registry.sync_with_ollama()
-
-    models = model_registry.list_models()
-    gpu_status = await model_registry.get_gpu_status()
-
-    return {
-        "models": models,
-        "gpu": gpu_status,
-        "sovereign": True,
-    }
-
-
-@router.get("/models/available", dependencies=[Depends(require_permission("all"))])
-async def list_available_models():
-    """
-    List all models available in Ollama (pulled and ready to use).
-    """
-    models = await ollama_client.list_models()
-
-    return {
-        "ollama_models": [
-            {
-                "name": m.name,
-                "size_gb": m.size_gb,
-                "parameter_size": m.parameter_size,
-                "quantization": m.quantization_level,
-                "family": m.family,
-            }
-            for m in models
-        ],
-        "total": len(models),
-    }
-
 
 # ── Vision Endpoints (Phase 8) ────────────────────────────────────────────────
 
@@ -500,25 +390,32 @@ async def search_documents(request: SearchRequest):
     from backend.rag.retriever import hybrid_retriever
     from backend.rag.reranker import reranker_service
     from backend.api.schemas import SourceDocument
+    from backend.rag.exceptions import RetrievalServiceError
 
-    # 1. Embed query
-    query_embedding = await embedding_service.embed_text(request.query)
-
-    # 2. Hybrid search with RBAC
-    candidates = await hybrid_retriever.search(
-        query=request.query,
-        query_embedding=query_embedding,
-        top_k=request.top_k * 2 if request.rerank else request.top_k,
-        user_role=request.user_role.value if hasattr(request.user_role, 'value') else request.user_role,
-        department_filter=request.department_filter,
-    )
-
-    # 3. Rerank
-    if request.rerank and candidates:
-        candidates = await reranker_service.rerank(
+    try:
+        # 1. Embed query
+        query_embedding = await embedding_service.embed_text(request.query)
+    
+        # 2. Hybrid search with RBAC
+        candidates = await hybrid_retriever.search(
             query=request.query,
-            documents=candidates,
-            top_k=request.top_k,
+            query_embedding=query_embedding,
+            top_k=request.top_k * 2 if request.rerank else request.top_k,
+            user_role=request.user_role.value if hasattr(request.user_role, 'value') else request.user_role,
+            department_filter=request.department_filter,
+        )
+    
+        # 3. Rerank
+        if request.rerank and candidates:
+            candidates = await reranker_service.rerank(
+                query=request.query,
+                documents=candidates,
+                top_k=request.top_k,
+            )
+    except RetrievalServiceError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e)
         )
         
     # 4. Format response
@@ -679,14 +576,15 @@ async def auth_me(current_user: dict = Depends(get_current_user)):
 @router.get("/admin/models", dependencies=[Depends(require_permission("all"))])
 async def list_models():
     """List all available models and their current status."""
-    models = model_registry.list_models()
-    gpu_status = await model_registry.get_gpu_status()
+    from backend.optimization.vram import vram_manager
+    models = get_all_models()
+    gpu_status = vram_manager.get_state()
 
     return {
         "models": models,
-        "active_gpu_model": gpu_status["active_heavy_model"],
-        "gpu_vram_total_mb": gpu_status["total_vram_mb"],
-        "gpu_vram_used_mb": gpu_status["used_vram_mb"],
+        "active_gpu_model": "multi-model (dynamic)",
+        "gpu_vram_total_mb": gpu_status.total_mb,
+        "gpu_vram_used_mb": gpu_status.used_mb,
     }
 
 

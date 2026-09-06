@@ -107,6 +107,12 @@ async def probe_qdrant(host: str, port: int) -> ProbeResult:
         )
     except Exception as e:
         logger.debug("Qdrant probe failed: %s", e)
+        return ProbeResult(
+            service="qdrant",
+            status="not_reachable",
+            detail=str(e),
+        )
+
 async def probe_vllm(base_url: str) -> ProbeResult:
     try:
         start = time.time()

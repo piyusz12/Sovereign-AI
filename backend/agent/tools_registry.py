@@ -70,6 +70,7 @@ async def _execute_search(query: str) -> ToolExecution:
     from backend.rag.retriever import hybrid_retriever
     from backend.rag.reranker import reranker_service
     from backend.security.enforcement import authorize_action, SecurityException
+    from backend.rag.exceptions import RetrievalServiceError
     
     try:
         authorize_action("agent", "rag.search", metadata={"namespace": "general"})
@@ -85,25 +86,27 @@ async def _execute_search(query: str) -> ToolExecution:
         )
         if candidates:
             candidates = await reranker_service.rerank(query, candidates, top_k=3)
-            
-        if not candidates:
-            return ToolExecution("document_reasoning", True, "No relevant documents found.", "")
-            
-        output = "Found documents:\n\n"
-        for i, doc in enumerate(candidates, 1):
-            title = doc.get("filename") or doc.get("title") or f"Doc {i}"
-            score = doc.get("_rerank_score", 0.0)
-            text = doc.get("text", "")
-            
-            # Truncate to prevent context window overflow (800 chars max per doc)
-            if len(text) > 800:
-                text = text[:800] + "\n... (truncated to save context)"
-                
-            output += f"--- {title} (Relevance: {score:.2f}) ---\n{text}\n\n"
-            
-        return ToolExecution("document_reasoning", True, output, "")
-    except Exception as e:
+    except RetrievalServiceError as e:
         return ToolExecution("document_reasoning", False, "", str(e))
+    except Exception as e:
+        return ToolExecution("document_reasoning", False, "", f"Internal retrieval error: {e}")
+            
+    if not candidates:
+        return ToolExecution("document_reasoning", True, "No relevant documents found.", "")
+        
+    output = "Found documents:\n\n"
+    for i, doc in enumerate(candidates, 1):
+        title = doc.get("filename") or doc.get("title") or f"Doc {i}"
+        score = doc.get("_rerank_score", 0.0)
+        text = doc.get("text", "")
+        
+        # Truncate to prevent context window overflow (800 chars max per doc)
+        if len(text) > 800:
+            text = text[:800] + "\n... (truncated to save context)"
+            
+        output += f"--- {title} (Relevance: {score:.2f}) ---\n{text}\n\n"
+        
+    return ToolExecution("document_reasoning", True, output, "")
 
 def _run_search_tool(user_request: str, context: str = "") -> ToolExecution:
     return run_async_safely(_execute_search(user_request))

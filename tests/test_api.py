@@ -15,6 +15,17 @@ def client():
     """Create a test client for the FastAPI app."""
     return TestClient(app)
 
+@pytest.fixture
+def auth_client(client):
+    """Create an authenticated test client for the FastAPI app."""
+    response = client.post(
+        "/api/v1/auth/login",
+        data={"username": "admin", "password": "admin123"} 
+    )
+    token = response.json()["access_token"]
+    client.headers.update({"Authorization": f"Bearer {token}"})
+    return client
+
 
 class TestHealthEndpoints:
     """Test health and sovereignty endpoints."""
@@ -77,9 +88,9 @@ class TestSovereigntyHeaders:
 class TestChatEndpoint:
     """Test the main chat endpoint."""
 
-    def test_chat_returns_valid_response(self, client):
+    def test_chat_returns_valid_response(self, auth_client):
         """POST /api/v1/chat returns a valid ChatResponse."""
-        response = client.post(
+        response = auth_client.post(
             "/api/v1/chat",
             json={"message": "Hello, Sovereign AI"},
         )
@@ -91,9 +102,9 @@ class TestChatEndpoint:
         assert "request_id" in data
         assert "duration_ms" in data
 
-    def test_chat_classifies_coding_task(self, client):
+    def test_chat_classifies_coding_task(self, auth_client):
         """Chat correctly classifies a coding request."""
-        response = client.post(
+        response = auth_client.post(
             "/api/v1/chat",
             json={"message": "Write Python code to calculate pump efficiency"},
         )
@@ -102,9 +113,9 @@ class TestChatEndpoint:
         assert route["task_type"] == "coding"
         assert route["model"] == "qwen2.5-coder-7b"
 
-    def test_chat_classifies_document_task(self, client):
+    def test_chat_classifies_document_task(self, auth_client):
         """Chat correctly classifies a document reasoning request."""
-        response = client.post(
+        response = auth_client.post(
             "/api/v1/chat",
             json={"message": "Summarize this inspection report"},
         )
@@ -113,9 +124,9 @@ class TestChatEndpoint:
         assert route["task_type"] == "document_reasoning"
         assert route["model"] == "qwen3-14b"
 
-    def test_chat_rejects_empty_message(self, client):
+    def test_chat_rejects_empty_message(self, auth_client):
         """Chat rejects empty messages."""
-        response = client.post(
+        response = auth_client.post(
             "/api/v1/chat",
             json={"message": ""},
         )
@@ -164,7 +175,7 @@ class TestAuthEndpoints:
         token = login_response.json()["access_token"]
 
         # Then use the token
-        response = client.get(f"/api/v1/auth/me?token={token}")
+        response = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
         assert response.status_code == 200
         data = response.json()
         assert data["username"] == "engineer"
@@ -179,18 +190,18 @@ class TestAuthEndpoints:
 class TestAdminEndpoints:
     """Test admin endpoints."""
 
-    def test_list_models(self, client):
+    def test_list_models(self, auth_client):
         """GET /admin/models lists all available models."""
-        response = client.get("/api/v1/admin/models")
+        response = auth_client.get("/api/v1/admin/models")
         assert response.status_code == 200
         data = response.json()
         assert "models" in data
         assert len(data["models"]) >= 5  # reasoning, coding, vision, embedding, reranker
         assert "gpu_vram_total_mb" in data
 
-    def test_admin_health(self, client):
+    def test_admin_health(self, auth_client):
         """GET /admin/health returns subsystem statuses."""
-        response = client.get("/api/v1/admin/health")
+        response = auth_client.get("/api/v1/admin/health")
         assert response.status_code == 200
         data = response.json()
         assert data["api"] == "ok"

@@ -11,6 +11,8 @@ class TaskType(str, Enum):
     RAG_SEARCH = "RAG_SEARCH"
     SUMMARIZATION = "SUMMARIZATION"
     PLANNING = "PLANNING"
+    EMBEDDING = "EMBEDDING"
+    RERANKING = "RERANKING"
 
 class ModelCapability(str, Enum):
     TEXT = "text"
@@ -27,6 +29,7 @@ class ModelStatus(str, Enum):
 class ModelInfo(BaseModel):
     id: str
     name: str
+    version: str = "v1"
     role: str
     capabilities: List[ModelCapability]
     context_length: int

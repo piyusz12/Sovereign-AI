@@ -8,8 +8,13 @@ from backend.model_gateway.schemas import (
     GatewayInferenceRequest,
     GatewayInferenceResponse,
     GatewayStreamChunk,
+    GatewayEmbeddingRequest,
+    GatewayEmbeddingResponse,
+    GatewayRerankRequest,
+    GatewayRerankResponse,
     InferenceMetadata
 )
+import httpx
 from backend.model_gateway.provider import LLMProvider
 from backend.router.ollama_client import OllamaClient
 from backend.router.vllm_client import VllmClient
@@ -84,6 +89,12 @@ class OllamaGatewayProvider(LLMProvider):
                 done=chunk.done,
                 metadata=metadata
             )
+
+    async def embed(self, request: GatewayEmbeddingRequest) -> GatewayEmbeddingResponse:
+        raise NotImplementedError("Ollama embeddings not implemented via Gateway yet.")
+
+    async def rerank(self, request: GatewayRerankRequest) -> GatewayRerankResponse:
+        raise NotImplementedError("Ollama reranking not implemented via Gateway yet.")
 
     async def load_model(self, model_id: str) -> bool:
         return await self._client.load_model(model_id)
@@ -170,6 +181,12 @@ class VLLMGatewayProvider(LLMProvider):
                 metadata=metadata
             )
 
+    async def embed(self, request: GatewayEmbeddingRequest) -> GatewayEmbeddingResponse:
+        raise NotImplementedError("vLLM does not support embeddings.")
+
+    async def rerank(self, request: GatewayRerankRequest) -> GatewayRerankResponse:
+        raise NotImplementedError("vLLM does not support reranking.")
+
     async def load_model(self, model_id: str) -> bool:
         logger.info(f"vLLM: Assuming model {model_id} is already loaded.")
         return True
@@ -180,3 +197,96 @@ class VLLMGatewayProvider(LLMProvider):
 
     async def is_running(self) -> bool:
         return await self._client.is_running()
+
+
+class InfinityGatewayProvider(LLMProvider):
+    def __init__(self, base_url: str = settings.infinity_base_url):
+        self.base_url = base_url
+        self.provider_name = "infinity"
+
+    async def generate(self, request: GatewayInferenceRequest) -> GatewayInferenceResponse:
+        raise NotImplementedError("Infinity does not support text generation.")
+
+    async def stream(self, request: GatewayInferenceRequest) -> AsyncIterator[GatewayStreamChunk]:
+        raise NotImplementedError("Infinity does not support text generation.")
+        if False:
+            yield
+
+    async def embed(self, request: GatewayEmbeddingRequest) -> GatewayEmbeddingResponse:
+        start_time = time.time()
+        async with httpx.AsyncClient(timeout=request.timeout) as client:
+            response = await client.post(
+                f"{self.base_url}/v1/embeddings",
+                json={"model": request.model, "input": request.input},
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            embeddings = []
+            if "data" in data and isinstance(data["data"], list):
+                embeddings = [item["embedding"] for item in data["data"]]
+                
+        latency_ms = (time.time() - start_time) * 1000
+        
+        metadata = InferenceMetadata(
+            request_id=f"REQ-{uuid.uuid4().hex[:8].upper()}",
+            model=request.model,
+            provider=self.provider_name,
+            latency_ms=latency_ms,
+            output_tokens=data.get("usage", {}).get("total_tokens", 0),
+            prompt_tokens=data.get("usage", {}).get("prompt_tokens", 0),
+            status="success",
+            finish_reason="stop"
+        )
+        return GatewayEmbeddingResponse(embeddings=embeddings, metadata=metadata)
+
+    async def rerank(self, request: GatewayRerankRequest) -> GatewayRerankResponse:
+        start_time = time.time()
+        async with httpx.AsyncClient(timeout=request.timeout) as client:
+            response = await client.post(
+                f"{self.base_url}/rerank",
+                json={
+                    "model": request.model,
+                    "query": request.query,
+                    "documents": request.documents
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            scores = [0.0] * len(request.documents)
+            if "results" in data:
+                for result in data["results"]:
+                    idx = result.get("index")
+                    if idx is not None and 0 <= idx < len(request.documents):
+                        scores[idx] = result.get("relevance_score", 0.0)
+                        
+        latency_ms = (time.time() - start_time) * 1000
+        
+        metadata = InferenceMetadata(
+            request_id=f"REQ-{uuid.uuid4().hex[:8].upper()}",
+            model=request.model,
+            provider=self.provider_name,
+            latency_ms=latency_ms,
+            output_tokens=data.get("usage", {}).get("total_tokens", 0),
+            prompt_tokens=data.get("usage", {}).get("prompt_tokens", 0),
+            status="success",
+            finish_reason="stop"
+        )
+        return GatewayRerankResponse(scores=scores, metadata=metadata)
+
+    async def load_model(self, model_id: str) -> bool:
+        logger.info(f"Infinity: Assuming model {model_id} is loaded.")
+        return True
+
+    async def unload_model(self, model_id: str) -> bool:
+        logger.info(f"Infinity: Unload requested for {model_id}, no-op.")
+        return True
+
+    async def is_running(self) -> bool:
+        try:
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                response = await client.get(f"{self.base_url}/health")
+                return response.status_code == 200
+        except Exception:
+            return False

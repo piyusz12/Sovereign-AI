@@ -71,6 +71,8 @@ class DocumentIngestionPipeline:
         from backend.documents.parser import docling_parser
         from backend.rag.chunker import document_chunker
         from backend.rag.embedder import embedding_service
+        from backend.rag.exceptions import RetrievalServiceError
+        from backend.audit.service import audit_service
         from backend.rag.retriever import hybrid_retriever
 
         try:
@@ -91,7 +93,10 @@ class DocumentIngestionPipeline:
             chunks = document_chunker.chunk_document(parsed_doc.raw_text, metadata)
             
             # Step 5: Embedding
-            embedded_chunks = await embedding_service.embed_document_chunks(chunks)
+            try:
+                embedded_chunks = await embedding_service.embed_document_chunks(chunks)
+            except RetrievalServiceError as e:
+                raise HTTPException(status_code=503, detail=f"Embedding service unavailable: {e}")
             
             # Step 6: Qdrant Storage
             success = await hybrid_retriever.upsert_chunks(embedded_chunks)

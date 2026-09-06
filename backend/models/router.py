@@ -18,6 +18,10 @@ def determine_required_capabilities(task_type: TaskType) -> list[ModelCapability
         return [ModelCapability.TEXT]
     elif task_type == TaskType.RAG_SEARCH:
         return [ModelCapability.EMBEDDING]
+    elif task_type == TaskType.EMBEDDING:
+        return [ModelCapability.EMBEDDING]
+    elif task_type == TaskType.RERANKING:
+        return [ModelCapability.RERANKER]
     return [ModelCapability.TEXT]
 
 def route_task(request: RoutingRequest) -> RoutingResponse:

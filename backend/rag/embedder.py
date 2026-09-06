@@ -10,9 +10,12 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-import httpx
-
 from backend.settings import settings
+from backend.model_gateway import model_gateway, GatewayEmbeddingRequest
+from backend.models.registry import get_model
+from backend.models.router import route_task, RoutingRequest, TaskType
+from backend.rag.cache import embedding_cache
+from backend.rag.exceptions import RetrievalServiceError
 
 logger = logging.getLogger("sovereign.rag.embedder")
 
@@ -39,64 +42,58 @@ class EmbeddingService:
         self._local_model = None
         self._local_model_loaded = False
 
-    async def embed_text(self, text: str) -> list[float]:
+    async def embed_text(self, text: str, model_id: str = None) -> list[float]:
         """Generate embedding for a single text."""
-        embeddings = await self.embed_batch([text])
+        embeddings = await self.embed_batch([text], model_id=model_id)
         return embeddings[0] if embeddings else [0.0] * self.dimension
 
-    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        """Generate embeddings for a batch of texts."""
+    async def embed_batch(self, texts: list[str], model_id: str = None) -> list[list[float]]:
+        """Generate embeddings for a batch of texts via Model Gateway with caching."""
         
-        # 1. Try Infinity API first (Phase 26)
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.post(
-                    f"{settings.infinity_base_url}/v1/embeddings",
-                    json={"model": self.model, "input": texts},
-                )
-                response.raise_for_status()
-                data = response.json()
-                if "data" in data and isinstance(data["data"], list):
-                    return [item["embedding"] for item in data["data"]]
-        except Exception as e:
-            logger.debug("Infinity embedding API unreachable, falling back: %s", e)
-
-        # 2. Try external Ollama API next
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.post(
-                    f"{self.base_url}/api/embed",
-                    json={"model": self.model, "input": texts},
-                )
-                response.raise_for_status()
-                data = response.json()
-                if "embeddings" in data:
-                    return data["embeddings"]
-        except Exception as e:
-            logger.debug("Ollama embedding failed or unreachable: %s", e)
+        if not model_id:
+            route = route_task(RoutingRequest(task_type=TaskType.EMBEDDING))
+            model_id = route.selected_model
             
-        # 3. Fallback to local sentence-transformers
-        return await self._call_local_embedder(texts)
+        model_info = get_model(model_id)
+        if not model_info:
+            raise RetrievalServiceError(f"Embedding model {model_id} not found in registry")
+            
+        model_version = model_info.version
         
-    async def _call_local_embedder(self, texts: list[str]) -> list[list[float]]:
-        try:
-            import asyncio
-            from sentence_transformers import SentenceTransformer
-            
-            if not self._local_model_loaded:
-                logger.info("Loading local Embedding model: %s", self.model)
-                self._local_model = SentenceTransformer(self.model)
-                self._local_model_loaded = True
+        final_embeddings = [None] * len(texts)
+        texts_to_embed = []
+        indices_to_embed = []
+        
+        # 1. Check cache
+        for idx, text in enumerate(texts):
+            cached = embedding_cache.get_embedding(text, model_id, model_version)
+            if cached is not None:
+                final_embeddings[idx] = cached
+            else:
+                texts_to_embed.append(text)
+                indices_to_embed.append(idx)
                 
-            # Offload heavy ML inference to thread pool
-            embeddings = await asyncio.to_thread(self._local_model.encode, texts, convert_to_numpy=True)
-            return embeddings.tolist()
-        except ImportError:
-            logger.warning("sentence-transformers not installed. Embedding disabled.")
-            return [[0.0] * self.dimension for _ in texts]
+        if not texts_to_embed:
+            return final_embeddings
+            
+        # 2. Call gateway for cache misses
+        try:
+            request = GatewayEmbeddingRequest(
+                model=model_id,
+                input=texts_to_embed,
+                timeout=30.0
+            )
+            response = await model_gateway.embed(request)
+            
+            # 3. Store in cache and populate final results
+            for idx, text, emb in zip(indices_to_embed, texts_to_embed, response.embeddings):
+                embedding_cache.set_embedding(text, model_id, model_version, emb)
+                final_embeddings[idx] = emb
+                
+            return final_embeddings
         except Exception as e:
-            logger.error("Local embedding failed: %s", e)
-            return [[0.0] * self.dimension for _ in texts]
+            logger.error("Embedding generation failed: %s", e)
+            raise RetrievalServiceError("Knowledge search is temporarily unavailable. No external service was contacted.") from e
 
     async def embed_document_chunks(
         self,
