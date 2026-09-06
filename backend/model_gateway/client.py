@@ -21,6 +21,14 @@ from backend.router.vllm_client import VllmClient
 
 logger = logging.getLogger("sovereign.model_gateway.client")
 
+
+def _provider_model_id(model_id: str) -> str:
+    """Resolve internal registry IDs to the provider's actual local model tag."""
+    from backend.models.registry import get_model
+
+    model = get_model(model_id)
+    return model.name if model else model_id
+
 class OllamaGatewayProvider(LLMProvider):
     def __init__(self, base_url: str = settings.ollama_base_url):
         self._client = OllamaClient(base_url)
@@ -33,11 +41,12 @@ class OllamaGatewayProvider(LLMProvider):
         messages = [msg.model_dump() for msg in request.messages]
         
         resp = await self._client.chat(
-            model=request.model,
+            model=_provider_model_id(request.model),
             messages=messages,
             temperature=request.temperature,
             max_tokens=request.max_tokens,
             keep_alive="10m",
+            response_format=request.response_format,
         )
         
         latency_ms = (time.time() - start_time) * 1000
@@ -64,7 +73,7 @@ class OllamaGatewayProvider(LLMProvider):
         request_id = f"REQ-{uuid.uuid4().hex[:8].upper()}"
         
         async for chunk in self._client.chat_stream(
-            model=request.model,
+            model=_provider_model_id(request.model),
             messages=messages,
             temperature=request.temperature,
             max_tokens=request.max_tokens,
@@ -97,10 +106,10 @@ class OllamaGatewayProvider(LLMProvider):
         raise NotImplementedError("Ollama reranking not implemented via Gateway yet.")
 
     async def load_model(self, model_id: str) -> bool:
-        return await self._client.load_model(model_id)
+        return await self._client.load_model(_provider_model_id(model_id))
 
     async def unload_model(self, model_id: str) -> bool:
-        return await self._client.unload_model(model_id)
+        return await self._client.unload_model(_provider_model_id(model_id))
 
     async def is_running(self) -> bool:
         return await self._client.is_running()

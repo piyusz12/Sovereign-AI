@@ -35,7 +35,17 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     ollama_reasoning_model: str = "qwen3:14b"
     ollama_coding_model: str = "qwen2.5-coder:7b"
-    ollama_vision_model: str = "llama3.2-vision:latest"
+    ollama_vision_model: str = "qwen3-vl:8b"
+
+    # --- Local inference performance profile (RTX 4060 Laptop, 8 GB VRAM) ---
+    # Keep one heavy model active, reserve output/KV capacity, and avoid
+    # context sizes that make the 14B reasoning model swap to system memory.
+    inference_context_tokens: int = 8192
+    inference_output_reserve_tokens: int = 1024
+    inference_max_agent_iterations: int = 5
+    inference_max_tool_calls: int = 10
+    inference_max_retrieval_retries: int = 2
+    inference_keep_alive: str = "5m"
 
     # --- vLLM (Phase 25+) ---
     vllm_base_url: str = "http://localhost:8000"

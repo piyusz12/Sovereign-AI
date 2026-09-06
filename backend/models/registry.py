@@ -6,60 +6,60 @@ from backend.models.schemas import ModelInfo, ModelCapability, ModelStatus
 _MODELS_DB: Dict[str, ModelInfo] = {
     "reasoning-local": ModelInfo(
         id="reasoning-local",
-        name="Llama-3-8B-Instruct",
+        name="qwen3:14b",
         role="reasoning",
         capabilities=[ModelCapability.TEXT],
         context_length=8192,
-        quantization="8-bit",
-        vram_estimate_mb=4800,
+        quantization="4-bit",
+        vram_estimate_mb=7000,
         status=ModelStatus.READY,
-        loaded=True
+        loaded=False,
     ),
     "coding-local": ModelInfo(
         id="coding-local",
-        name="Qwen2.5-Coder-7B-Instruct",
+        name="qwen2.5-coder:7b",
         role="coding",
         capabilities=[ModelCapability.TEXT, ModelCapability.CODE],
-        context_length=32768,
+        context_length=8192,
         quantization="4-bit",
         vram_estimate_mb=4200,
         status=ModelStatus.READY,
-        loaded=True,
-        backend="vllm"
+        loaded=False,
+        backend="ollama"
     ),
     "vision-local": ModelInfo(
         id="vision-local",
-        name="Llava-v1.5-7b",
+        name="qwen3-vl:8b",
         role="vision",
         capabilities=[ModelCapability.TEXT, ModelCapability.VISION],
         context_length=4096,
         quantization="4-bit",
-        vram_estimate_mb=5000,
+        vram_estimate_mb=6800,
         status=ModelStatus.READY,
         loaded=False
     ),
     "embedding-local": ModelInfo(
         id="embedding-local",
-        name="bge-m3",
+        name="qwen3-embedding:0.6b",
         version="v1",
         role="embedding",
         capabilities=[ModelCapability.EMBEDDING],
         context_length=8192,
         vram_estimate_mb=800,
         status=ModelStatus.READY,
-        loaded=True,
+        loaded=False,
         backend="infinity"
     ),
     "reranker-local": ModelInfo(
         id="reranker-local",
-        name="bge-reranker-v2-m3",
+        name="BAAI/bge-reranker-base",
         version="v1",
         role="reranking",
         capabilities=[ModelCapability.RERANKER],
         context_length=8192,
         vram_estimate_mb=600,
         status=ModelStatus.READY,
-        loaded=True,
+        loaded=False,
         backend="infinity"
     )
 }

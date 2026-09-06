@@ -45,6 +45,10 @@ from backend.router.vision import (
 from backend.router.providers.base import BaseProvider, ProviderChatResponse, ProviderStreamChunk
 from backend.router.providers.factory import get_provider
 from backend.router.session_manager import session_manager, SessionManager
+from backend.optimization.context import ContextBudgeter, PromptBuild
+from backend.optimization.scheduler import gpu_scheduler
+from backend.optimization.telemetry import inference_telemetry, new_metric
+from backend.settings import settings
 
 logger = logging.getLogger("sovereign.router")
 
@@ -88,6 +92,10 @@ class ModelRouter:
         self.llm_clf = llm_clf or llm_classifier
         self.sessions = sessions or session_manager
         self.policy = policy or default_policy
+        self.context_budgeter = ContextBudgeter(
+            max_total_tokens=settings.inference_context_tokens,
+            output_reserve_tokens=settings.inference_output_reserve_tokens,
+        )
 
     def _get_provider(self, model: ModelConfig) -> BaseProvider:
         """Get the appropriate provider for a model."""
@@ -197,26 +205,58 @@ class ModelRouter:
         )
 
         # Step 4: Send to model via provider
-        messages = self._build_messages(user_input, effective_prompt, session_id, images=images)
+        prompt_build = self._build_prompt(user_input, effective_prompt, session_id, images=images)
+        messages = prompt_build.messages
         provider = self._get_provider(model)
 
         try:
-            chat_response = await provider.chat(
-                model_id=model.model_id,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                keep_alive=model.keep_alive,
+            submitted_at = time.perf_counter()
+            execution_started_at = submitted_at
+
+            async def run_inference():
+                nonlocal execution_started_at
+                execution_started_at = time.perf_counter()
+                return await provider.chat(
+                    model_id=model.model_id,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    keep_alive=model.keep_alive,
+                )
+
+            chat_response = await gpu_scheduler.schedule(
+                task_type=f"inference-{category}", priority=1, coro=run_inference()
             )
             response_text = chat_response.content
             m = chat_response.metrics
+            queue_wait_ms = round((execution_started_at - submitted_at) * 1000, 2)
+            prompt_tokens = m.prompt_eval_count or prompt_build.budget.used_tokens
+            itl_ms = round(1000 / m.tokens_per_sec, 2) if m.tokens_per_sec else 0.0
             metrics = {
                 "tokens_per_sec": m.tokens_per_sec,
-                "first_token_ms": m.first_token_ms,
+                "ttft_ms": m.first_token_ms,
+                "itl_ms": itl_ms,
                 "total_duration_ms": m.total_duration_ms,
                 "eval_count": m.eval_count,
-                "prompt_eval_count": m.prompt_eval_count,
+                "prompt_eval_count": prompt_tokens,
+                "queue_wait_ms": queue_wait_ms,
+                "prefix_key": prompt_build.prefix_key,
+                "context_budget": prompt_build.budget.__dict__,
             }
+            inference_telemetry.record(
+                new_metric(
+                    model=model.model_id,
+                    task_type=routing_decision.task_type,
+                    ttft_ms=m.first_token_ms,
+                    itl_ms=itl_ms,
+                    tokens_per_second=m.tokens_per_sec,
+                    prompt_tokens=prompt_tokens,
+                    output_tokens=m.eval_count,
+                    queue_wait_ms=queue_wait_ms,
+                    total_duration_ms=m.total_duration_ms,
+                    prefix_key=prompt_build.prefix_key,
+                )
+            )
         except ConnectionError as e:
             logger.error("Provider connection failed: %s", e)
             response_text = f"[Error: {e}]"
@@ -307,58 +347,85 @@ class ModelRouter:
         )
 
         # Step 4: Stream from provider
-        messages = self._build_messages(user_input, effective_prompt, session_id, images=images)
+        prompt_build = self._build_prompt(user_input, effective_prompt, session_id, images=images)
+        messages = prompt_build.messages
         provider = self._get_provider(model)
         full_response = []
+        queued_at = time.perf_counter()
 
         try:
-            async for chunk in provider.chat_stream(
-                model_id=model.model_id,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                keep_alive=model.keep_alive,
-            ):
-                if chunk.done:
-                    # Final chunk with metrics
-                    duration_ms = round((time.time() - start) * 1000, 2)
-                    m = chunk.metrics or ProviderStreamChunk().metrics
-                    tps = m.tokens_per_sec if m else 0.0
-                    eval_count = m.eval_count if m else 0
+            async with gpu_scheduler.exclusive():
+                queue_wait_ms = round((time.perf_counter() - queued_at) * 1000, 2)
+                async for chunk in provider.chat_stream(
+                    model_id=model.model_id,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    keep_alive=model.keep_alive,
+                ):
+                    if chunk.done:
+                        # Final chunk with metrics
+                        duration_ms = round((time.time() - start) * 1000, 2)
+                        m = chunk.metrics or ProviderStreamChunk().metrics
+                        tps = m.tokens_per_sec if m else 0.0
+                        eval_count = m.eval_count if m else 0
 
-                    yield {
-                        "chunk": chunk.content,
-                        "done": True,
-                        "classification": {
-                            "task_type": routing_decision.task_type,
-                            "model": routing_decision.model_name,
-                            "confidence": routing_decision.confidence,
-                            "reason": routing_decision.reason,
-                        },
-                        "routing_decision": routing_decision.to_dict(),
-                        "model_used": {
-                            "name": model.name,
-                            "provider": model.provider.value,
-                            "model_id": model.model_id,
-                            "category": category,
-                        },
-                        "metrics": {
-                            "tokens_per_sec": tps,
-                            "eval_count": eval_count,
-                            "duration_ms": duration_ms,
-                        },
-                    }
+                        prompt_tokens = m.prompt_eval_count if m else 0
+                        prompt_tokens = prompt_tokens or prompt_build.budget.used_tokens
+                        itl_ms = round(1000 / tps, 2) if tps else 0.0
+                        inference_telemetry.record(
+                            new_metric(
+                                model=model.model_id,
+                                task_type=routing_decision.task_type,
+                                ttft_ms=m.first_token_ms if m else 0.0,
+                                itl_ms=itl_ms,
+                                tokens_per_second=tps,
+                                prompt_tokens=prompt_tokens,
+                                output_tokens=eval_count,
+                                queue_wait_ms=queue_wait_ms,
+                                total_duration_ms=m.total_duration_ms if m else duration_ms,
+                                prefix_key=prompt_build.prefix_key,
+                            )
+                        )
+                        yield {
+                            "chunk": chunk.content,
+                            "done": True,
+                            "classification": {
+                                "task_type": routing_decision.task_type,
+                                "model": routing_decision.model_name,
+                                "confidence": routing_decision.confidence,
+                                "reason": routing_decision.reason,
+                            },
+                            "routing_decision": routing_decision.to_dict(),
+                            "model_used": {
+                                "name": model.name,
+                                "provider": model.provider.value,
+                                "model_id": model.model_id,
+                                "category": category,
+                            },
+                            "metrics": {
+                                "tokens_per_sec": tps,
+                                "ttft_ms": m.first_token_ms if m else 0.0,
+                                "itl_ms": itl_ms,
+                                "eval_count": eval_count,
+                                "prompt_eval_count": prompt_tokens,
+                                "queue_wait_ms": queue_wait_ms,
+                                "prefix_key": prompt_build.prefix_key,
+                                "context_budget": prompt_build.budget.__dict__,
+                                "duration_ms": duration_ms,
+                            },
+                        }
 
-                    if session_id and full_response:
-                        self.sessions.add_message(session_id, "user", user_input)
-                        self.sessions.add_message(session_id, "assistant", "".join(full_response))
+                        if session_id and full_response:
+                            self.sessions.add_message(session_id, "user", user_input)
+                            self.sessions.add_message(session_id, "assistant", "".join(full_response))
 
-                else:
-                    full_response.append(chunk.content)
-                    yield {
-                        "chunk": chunk.content,
-                        "done": False,
-                    }
+                    else:
+                        full_response.append(chunk.content)
+                        yield {
+                            "chunk": chunk.content,
+                            "done": False,
+                        }
 
         except ConnectionError as e:
             yield {
@@ -526,14 +593,22 @@ class ModelRouter:
             return None
 
         try:
+            # Classification must participate in the same lifecycle as the
+            # later task. Otherwise an ambiguous coding request can leave the
+            # reasoning model resident while the coder tries to load.
+            await self.registry.load_model("reasoning")
             provider = self._get_provider(reasoning_model)
-            return await self.llm_clf.classify(
-                user_input=user_input,
-                provider=provider,
-                model_id=reasoning_model.model_id,
-                temperature=self.policy.llm_temperature,
-                max_tokens=self.policy.llm_max_tokens,
-                timeout_seconds=self.policy.llm_timeout_seconds,
+            return await gpu_scheduler.schedule(
+                task_type="classification",
+                priority=3,
+                coro=self.llm_clf.classify(
+                    user_input=user_input,
+                    provider=provider,
+                    model_id=reasoning_model.model_id,
+                    temperature=self.policy.llm_temperature,
+                    max_tokens=self.policy.llm_max_tokens,
+                    timeout_seconds=self.policy.llm_timeout_seconds,
+                ),
             )
         except Exception as e:
             logger.warning("LLM classification attempt failed: %s", e)
@@ -628,19 +703,24 @@ class ModelRouter:
         session_id: Optional[str] = None,
         images: Optional[list[str]] = None,
     ) -> list[dict[str, Any]]:
-        """Build the messages list for the chat API, including history and images if present."""
-        messages = [{"role": "system", "content": system_prompt}]
+        """Compatibility wrapper for callers that only need provider messages."""
+        return self._build_prompt(user_input, system_prompt, session_id, images=images).messages
 
-        if session_id:
-            history = self.sessions.get_history(session_id)
-            messages.extend(history)
-
-        user_message: dict[str, Any] = {"role": "user", "content": user_input}
-        if images:
-            user_message["images"] = images
-
-        messages.append(user_message)
-        return messages
+    def _build_prompt(
+        self,
+        user_input: str,
+        system_prompt: str,
+        session_id: Optional[str] = None,
+        images: Optional[list[str]] = None,
+    ) -> PromptBuild:
+        """Build a stable static prefix and context-bounded dynamic suffix."""
+        history = self.sessions.get_history(session_id) if session_id else []
+        return self.context_budgeter.build_messages(
+            system_prompt=system_prompt,
+            user_request=user_input,
+            history=history,
+            images=images,
+        )
 
 
 # Global instance

@@ -13,11 +13,15 @@ Phase 5: Uses provider abstraction — registry is now backend-agnostic.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
+from backend.router.providers.base import BaseProvider
+from backend.router.providers.factory import get_provider
+from backend.settings import settings
 
 
 logger = logging.getLogger("sovereign.model_registry")
@@ -88,39 +92,42 @@ def _get_vision_system_prompt() -> str:
 
 DEFAULT_MODELS: dict[str, ModelConfig] = {
     "reasoning": ModelConfig(
-        name="Qwen3-14B (LiteLLM)",
-        provider=ModelProvider.LITELLM,
-        model_id="sovereign-reasoning",
+        name="Qwen3-14B (Ollama)",
+        provider=ModelProvider.OLLAMA,
+        model_id=settings.ollama_reasoning_model,
         category=ModelCategory.REASONING,
         quantization="4-bit",
-        context_length=32768,
+        context_length=settings.inference_context_tokens,
         vram_required_mb=7000,
         is_heavy=True,
-        base_url="http://localhost:4000",
+        base_url=settings.ollama_base_url,
+        keep_alive=settings.inference_keep_alive,
         system_prompt=_REASONING_SYSTEM_PROMPT,
     ),
     "coding": ModelConfig(
-        name="Qwen2.5-Coder-7B (LiteLLM)",
-        provider=ModelProvider.LITELLM,
-        model_id="sovereign-coding",
+        name="Qwen2.5-Coder-7B (Ollama)",
+        provider=ModelProvider.OLLAMA,
+        model_id=settings.ollama_coding_model,
         category=ModelCategory.CODING,
         quantization="4-bit",
-        context_length=16384,
+        context_length=settings.inference_context_tokens,
         vram_required_mb=5000,
         is_heavy=True,
-        base_url="http://localhost:4000",
+        base_url=settings.ollama_base_url,
+        keep_alive=settings.inference_keep_alive,
         system_prompt="",  # Populated at runtime from coding module
     ),
     "vision": ModelConfig(
-        name="Qwen3-VL-8B (LiteLLM)",
-        provider=ModelProvider.LITELLM,
-        model_id="sovereign-vision",
+        name="Qwen3-VL-8B (Ollama)",
+        provider=ModelProvider.OLLAMA,
+        model_id=settings.ollama_vision_model,
         category=ModelCategory.VISION,
         quantization="4-bit",
-        context_length=8192,
-        vram_required_mb=6000,
+        context_length=4096,
+        vram_required_mb=6800,
         is_heavy=True,
-        base_url="http://localhost:4000",
+        base_url=settings.ollama_base_url,
+        keep_alive=settings.inference_keep_alive,
         system_prompt="",  # Populated at runtime from vision module
     ),
     "embedding": ModelConfig(
@@ -165,6 +172,7 @@ class ModelRegistry:
     ):
         self.models = models or {k: ModelConfig(**v.__dict__) for k, v in DEFAULT_MODELS.items()}
         self._active_heavy_model: Optional[str] = None
+        self._model_lock = asyncio.Lock()
 
     def _get_provider(self, model: ModelConfig) -> BaseProvider:
         """Get the appropriate provider for a model."""
@@ -202,6 +210,11 @@ class ModelRegistry:
         return exists
 
     async def load_model(self, category: str) -> ModelConfig:
+        """Serialize model transitions so two requests cannot thrash VRAM."""
+        async with self._model_lock:
+            return await self._load_model_unlocked(category)
+
+    async def _load_model_unlocked(self, category: str) -> ModelConfig:
         """
         Load a model, unloading the current heavy model if necessary.
         For Ollama models, this pre-warms the model into VRAM.

@@ -353,6 +353,7 @@ class OllamaClient:
         temperature: float = 0.7,
         max_tokens: int = 4096,
         keep_alive: str = "10m",
+        response_format: str | dict[str, Any] | None = None,
     ) -> ChatResponse:
         """
         Send a chat completion request (non-streaming).
@@ -378,6 +379,8 @@ class OllamaClient:
                 "num_predict": max_tokens,
             },
         }
+        if response_format:
+            payload["format"] = response_format
 
         async with self._client(INFERENCE_TIMEOUT) as client:
             try:

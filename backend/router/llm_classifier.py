@@ -150,6 +150,7 @@ class LLMClassifier:
                 temperature=temperature,
                 max_tokens=max_tokens,
                 keep_alive="10m",
+                response_format="json",
             )
 
             duration_ms = round((time.time() - start) * 1000, 2)

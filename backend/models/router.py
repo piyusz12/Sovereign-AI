@@ -3,7 +3,7 @@ import logging
 
 from backend.models.schemas import RoutingRequest, RoutingResponse, ModelCapability, TaskType, ModelStatus
 from backend.models.registry import get_all_models
-from backend.models.manager import can_load_model, load_model
+from backend.models.manager import can_load_model
 from backend.audit.service import audit_service
 
 logger = logging.getLogger(__name__)
@@ -58,9 +58,12 @@ def route_task(request: RoutingRequest) -> RoutingResponse:
             selected_model = candidate
             reason = f"Model {candidate.id} already loaded and supports required capabilities."
             break
-        elif load_model(candidate.id):
+        elif can_load_model(candidate.vram_estimate_mb):
             selected_model = candidate
-            reason = f"Dynamically loaded {candidate.id} to satisfy {request.task_type.value}."
+            reason = (
+                f"Selected {candidate.id} for {request.task_type.value}; "
+                "the asynchronous gateway will load it inside the serialized GPU slot."
+            )
             break
                 
     if not selected_model:

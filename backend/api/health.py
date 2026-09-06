@@ -158,7 +158,15 @@ async def probe_all(ollama_url: str, qdrant_host: str, qdrant_port: int, vllm_ur
         infinity = await probe_infinity(infinity_url)
         results["infinity"] = {"status": infinity.status, "latency_ms": infinity.latency_ms, "detail": infinity.detail}
         
-    from backend.models.manager import model_manager
-    results["model_manager"] = await model_manager.health_check()
+    # The primary router owns model lifecycle. Avoid importing the retired
+    # legacy manager here: health checks must stay available even when no model
+    # has been warmed yet.
+    from backend.router.model_registry import model_registry
+
+    results["model_manager"] = {
+        "status": "ready",
+        "active_heavy_model": model_registry.get_active_heavy_model(),
+        "single_heavy_model_policy": True,
+    }
 
     return results

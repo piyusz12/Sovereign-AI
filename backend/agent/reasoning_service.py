@@ -82,7 +82,7 @@ def _extract_json(text: str) -> dict[str, Any]:
         raise ReasoningServiceError(f"Malformed JSON from model: {exc}\n{text[:300]}") from exc
 
 
-def _chat(system_prompt: str, user_prompt: str, *, timeout: float = DEFAULT_TIMEOUT_SECONDS, max_retries: int = 3) -> str:
+def _chat(system_prompt: str, user_prompt: str, *, timeout: float = DEFAULT_TIMEOUT_SECONDS, max_retries: int = 2) -> str:
     import time
     import asyncio
     from backend.models import route_task, RoutingRequest, TaskType
@@ -103,7 +103,8 @@ def _chat(system_prompt: str, user_prompt: str, *, timeout: float = DEFAULT_TIME
             request = GatewayInferenceRequest(
                 model=route.selected_model,
                 messages=[ChatMessage(**m) for m in messages],
-                temperature=0.1
+                temperature=0.1,
+                response_format="json" if "JSON" in system_prompt else None,
             )
             response = asyncio.run(model_gateway.generate(request))
             content = response.content

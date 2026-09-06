@@ -26,7 +26,7 @@ from backend.rag.embedder import EmbeddingService, embedding_service
 
 logger = logging.getLogger("sovereign.rag.adaptive")
 
-MAX_RETRIEVAL_ATTEMPTS = 3
+MAX_RETRIEVAL_ATTEMPTS = 2
 MIN_RELEVANCE_THRESHOLD = 0.3
 
 

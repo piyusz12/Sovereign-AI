@@ -60,4 +60,18 @@ class EmbeddingCache:
         except Exception as e:
             logger.warning(f"Failed to write to embedding cache: {e}")
 
+    # Gateway-facing aliases keep cache ownership at the model boundary while
+    # preserving the original embedder API above.
+    def get(self, model_id: str, text: str, model_version: str | None = None) -> Optional[List[float]]:
+        return self.get_embedding(text, model_id, model_version or "v1")
+
+    def set(
+        self,
+        model_id: str,
+        text: str,
+        embedding: List[float],
+        model_version: str | None = None,
+    ) -> None:
+        self.set_embedding(text, model_id, model_version or "v1", embedding)
+
 embedding_cache = EmbeddingCache()

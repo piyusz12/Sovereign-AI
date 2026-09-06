@@ -15,7 +15,9 @@ class OptimizationModelManager:
     
     def __init__(self):
         # We classify embedding/reranking as lightweight models that should be resident
-        self.resident_roles = {"embedding", "reranker"}
+        # On an 8 GB laptop, none of these models are assumed to stay in VRAM.
+        # Embedding and reranking services can run on CPU/background workers.
+        self.resident_roles: set[str] = set()
         self.lock = asyncio.Lock()
 
     async def _unload_model(self, model: ModelInfo):

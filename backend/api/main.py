@@ -25,7 +25,7 @@ from backend.audit.router import router as audit_api_router
 from backend.sovereignty.router import router as sovereignty_router
 from backend.security.router import router as security_router
 from backend.sovereignty.service import sovereignty_service
-from backend.models import load_model
+from backend.optimization.model_manager import opt_model_manager
 from backend.api.models import router as models_router
 from backend.workflows.registry import init_workflows
 
@@ -46,7 +46,7 @@ async def lifespan(app: FastAPI):
     # Auto-warm default model if Ollama is running
     try:
         logger.info("Auto-warming default reasoning model...")
-        load_model("reasoning-local")
+        await opt_model_manager.ensure_loaded("reasoning-local")
     except Exception as e:
         logger.warning("Failed to warm up default model: %s", e)
         

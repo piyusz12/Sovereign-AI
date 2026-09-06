@@ -82,7 +82,7 @@ Pull the models configured by the application. The defaults are:
 ```bash
 ollama pull qwen3:14b
 ollama pull qwen2.5-coder:7b
-ollama pull llama3.2-vision:latest
+ollama pull qwen3-vl:8b
 ```
 
 ### 3. Start the backend
@@ -125,7 +125,7 @@ LOG_LEVEL=INFO
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_REASONING_MODEL=qwen3:14b
 OLLAMA_CODING_MODEL=qwen2.5-coder:7b
-OLLAMA_VISION_MODEL=llama3.2-vision:latest
+OLLAMA_VISION_MODEL=qwen3-vl:8b
 QDRANT_HOST=localhost
 QDRANT_PORT=6333
 JWT_SECRET_KEY=replace-this-in-development
@@ -133,6 +133,24 @@ SANDBOX_NETWORK=none
 ```
 
 Do not commit production secrets. In particular, replace the development JWT secret before exposing the API beyond a local machine.
+
+## 8 GB Performance Profile
+
+The default serving path is direct local Ollama (which uses llama.cpp), with one
+heavy model active at once. It is tuned for interactive latency on an RTX 4060
+Laptop instead of high concurrency:
+
+- Qwen3-14B, Qwen2.5-Coder-7B, and Qwen3-VL-8B are 4-bit profiles; switching a
+  task category unloads the previous heavy model.
+- Prompts have a deterministic static prefix and a bounded dynamic suffix. The
+  default 8,192-token window reserves 1,024 tokens for generation.
+- GPU work is serialized, with interactive inference ahead of background work.
+- `/api/v1/models/metrics` reports local TTFT, ITL, token-rate, and scheduler
+  queue telemetry without storing prompts or document text.
+
+Tune the profile with `INFERENCE_CONTEXT_TOKENS`,
+`INFERENCE_OUTPUT_RESERVE_TOKENS`, and `INFERENCE_KEEP_ALIVE`. Benchmark a
+change before retaining it: `python scripts/benchmark_model.py --runs 3`.
 
 ## API Surface
 
@@ -226,4 +244,3 @@ Back up or clear these directories according to your retention policy. Do not pl
 ## License
 
 This project is proprietary. Refer to the project owner for licensing and distribution terms.
-

@@ -13,6 +13,9 @@ class GatewayInferenceRequest(BaseModel):
     stream: bool = False
     timeout: float = 120.0
     trace_id: Optional[str] = None
+    # Local runtimes such as Ollama accept "json" or a JSON schema here. It
+    # prevents expensive application-level retries for malformed tool payloads.
+    response_format: Optional[str | Dict[str, Any]] = None
 
 class InferenceMetadata(BaseModel):
     request_id: str
