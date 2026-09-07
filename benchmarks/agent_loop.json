@@ -1,0 +1,18 @@
+[
+  {
+    "id": "agent_1",
+    "task_type": "agent_loop",
+    "goal": "Audit project directory for any non-allowlisted network socket creation calls and generate a security report.",
+    "tools_allowed": ["filesystem", "run_terminal_command"],
+    "max_steps": 5,
+    "expected_phases": ["PLAN", "TOOL_EXECUTION", "VERIFY", "FINAL_RESPONSE"]
+  },
+  {
+    "id": "agent_2",
+    "task_type": "agent_loop",
+    "goal": "Read backend/model_gateway/router.py, identify unsupported model alias fallbacks, generate a test patch, and run the test suite to verify.",
+    "tools_allowed": ["filesystem", "run_terminal_command"],
+    "max_steps": 6,
+    "expected_phases": ["READ_CODE", "SYNTHESIS", "EXECUTE_TEST", "REPORT"]
+  }
+]

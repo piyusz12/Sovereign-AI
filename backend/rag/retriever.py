@@ -191,6 +191,19 @@ class HybridRetriever:
             logger.error("Failed to upsert chunks: %s", e)
             return False
 
+    async def search_vector(
+        self,
+        query_embedding: list[float],
+        top_k: int = 20,
+        user_role: Optional[str] = None,
+        department_filter: Optional[str] = None,
+        collection: str = "sovereign_documents",
+    ) -> list[dict]:
+        """Search dense vector index directly (Qdrant)."""
+        return await self._dense_search(
+            query_embedding, top_k, user_role, department_filter, collection
+        )
+
     async def search(
         self,
         query: str,
@@ -205,7 +218,7 @@ class HybridRetriever:
         RBAC filtering applied at BOTH retrieval paths.
         """
         # Dense retrieval from Qdrant
-        dense_results = await self._dense_search(
+        dense_results = await self.search_vector(
             query_embedding, top_k, user_role, department_filter, collection
         )
 

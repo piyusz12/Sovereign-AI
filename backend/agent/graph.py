@@ -83,6 +83,8 @@ def node_execute_tool(state: AgentState) -> dict:
         required_permission = "ai.vision"
     elif task_type == "document_reasoning":
         required_permission = "rag.search"
+    elif task_type in ("general_reasoning", "general", "chat", "unsupported"):
+        required_permission = "ai.chat"
         
     if not rbac_enforcer.has_permission(user_role, required_permission):
         # Log audit and fail

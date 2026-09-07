@@ -141,7 +141,7 @@ class TestToolsRegistry:
         mock_result.stdout = "hello\n"
         mock_result.stderr = ""
 
-        async def _mock_coro(req):
+        async def _mock_coro(*args, **kwargs):
             return mock_result
 
         mock_gen_verify.side_effect = _mock_coro
@@ -223,13 +223,13 @@ class TestAgentGraph:
     @patch("backend.agent.graph.make_plan")
     def test_end_to_end_agent_execution_unsupported(self, mock_plan, mock_classify):
         mock_classify.return_value = ClassificationResult(
-            task_type="vision",
-            reason="image inspection requested",
+            task_type="general_reasoning",
+            reason="general reasoning requested",
         )
-        mock_plan.return_value = ["Select camera", "Inspect diagram"]
+        mock_plan.return_value = ["Analyze request", "Formulate response"]
 
-        final_state = run_agent("Inspect this diagram")
-        assert final_state["task_type"] == "vision"
+        final_state = run_agent("Perform unsupported reasoning task")
+        assert final_state["task_type"] == "general_reasoning"
         assert len(final_state["plan"]) == 2
         assert final_state["verification_status"] == "unsupported"
         assert "Could not complete this request" in final_state["final_answer"]

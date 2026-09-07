@@ -23,10 +23,11 @@ logger = logging.getLogger("sovereign.tools")
 class ToolPermission:
     """Permission configuration for a tool."""
     name: str
-    required_permission: str
+    required_permission: str = ""
     requires_approval: bool = False
     blocked: bool = False
     description: str = ""
+    allowed_roles: Optional[list[str]] = None
 
 
 @dataclass
@@ -121,6 +122,11 @@ class BaseTool(ABC):
 
     def has_permission(self, user_role: str) -> bool:
         """Check if the user role has permission to use this tool via RBAC."""
+        if self.permission.allowed_roles is not None:
+            if user_role not in self.permission.allowed_roles:
+                return False
+        if not self.permission.required_permission:
+            return True
         from backend.security.rbac import rbac_enforcer
         return rbac_enforcer.has_permission(user_role, self.permission.required_permission)
 

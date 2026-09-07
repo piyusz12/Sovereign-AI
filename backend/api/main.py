@@ -159,6 +159,7 @@ async def sovereignty_status():
         "external_dns_queries": 0,
         "external_tcp_connections": 0,
         "external_https_requests": 0,
+        "cloud_ai_requests": 0,
         "bytes_uploaded_externally": 0,
         "verification_method": "network_monitoring",
         "enforcer": enforcer_status,

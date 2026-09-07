@@ -1,0 +1,5 @@
+[
+  {"id": "chat_1", "task_type": "general", "prompt": "What is the capital of India and its primary administrative body?"},
+  {"id": "chat_2", "task_type": "general", "prompt": "Explain the difference between a synchronous and asynchronous generator."},
+  {"id": "chat_3", "task_type": "general", "prompt": "Summarize the 3 primary laws of thermodynamics in 3 sentences."}
+]

@@ -63,7 +63,7 @@ async def test_gateway_embed_uses_cache():
     
     with patch("backend.model_gateway.router.embedding_cache") as mock_cache:
         # Cache hits
-        mock_cache.get.return_value = [[0.1, 0.2, 0.3]]
+        mock_cache.get.return_value = [0.1, 0.2, 0.3]
         
         with patch.object(gateway, "_get_provider") as mock_get_provider:
             # We don't even need to mock the provider since it shouldn't be called

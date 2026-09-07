@@ -1,0 +1,14 @@
+[
+  {
+    "id": "long_doc_1",
+    "task_type": "long_document",
+    "prompt": "Analyze the following system specification and identify all architectural bottlenecks, single points of failure, and security constraints:\n\nSystem Overview: Sovereign AI is designed to operate on local consumer-grade edge hardware (AMD Ryzen 7 7840HS, 8-core/16-thread, 16 GB DDR5 RAM, NVIDIA GeForce RTX 4060 Laptop GPU with 8 GB VRAM). The platform guarantees absolute zero-egress data sovereignty with fail-closed security boundary policies.\n\nComponent 1: Model Gateway & Inference Runtime. Models are hosted through local llama.cpp and Ollama runtimes. Due to the strict 8 GB VRAM ceiling, concurrent loading of multiple large parameter models (e.g. Qwen 14B + DeepSeek Coder 7B) leads to CUDA out-of-memory errors or catastrophic swap thrashing. The system must enforce a single heavy model residency invariant at any time.\n\nComponent 2: RAG & Vector Engine. Vector representations are generated locally using BAAI/bge-large-en-v1.5 and stored in Qdrant. Context chunks are retrieved via hybrid dense-sparse search and reranked using a CPU-optimized lexical cross-density reranker to keep VRAM dedicated strictly to generation models.\n\nComponent 3: Agentic Reasoning Loop. A LangGraph-style state graph executes autonomous tasks with tool authorization, code execution sandboxing, and self-repair loops. High prefill costs during repeated agent steps are mitigated via deterministic prefix caching.\n\nComponent 4: Security Firewall. Every I/O payload undergoes deterministic rule-based and cryptographic inspection. Path traversal, shell injection, privilege escalation, and exfiltration attempts are blocked synchronously before reaching language models or tool executors.",
+    "expected_min_tokens": 150
+  },
+  {
+    "id": "long_doc_2",
+    "task_type": "long_document",
+    "prompt": "Summarize the technical differences between flash attention, paged attention, and sliding window attention in the context of KV-cache memory management on 8GB VRAM GPUs.",
+    "expected_min_tokens": 100
+  }
+]

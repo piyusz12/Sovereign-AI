@@ -175,6 +175,13 @@ class AuditService:
         except Exception as e:
             logger.error(f"Failed to write audit event to file: {e}")
 
+    ALLOWED_COLUMNS = {
+        "event_id", "trace_id", "timestamp", "user_id", "session_id", "action",
+        "resource_type", "resource_id", "project_id", "role", "permission",
+        "decision", "model", "tool", "sandbox_job_id", "source_ip",
+        "destination", "status", "error_code",
+    }
+
     def get_events(self, limit: int = 100, offset: int = 0, **filters) -> list[AuditEvent]:
         """Fetch audit events from SQLite, optionally filtered."""
         query = "SELECT * FROM audit_events"
@@ -182,7 +189,7 @@ class AuditService:
         params = []
         
         for k, v in filters.items():
-            if v is not None:
+            if v is not None and k in self.ALLOWED_COLUMNS:
                 conditions.append(f"{k} = ?")
                 params.append(v)
                 

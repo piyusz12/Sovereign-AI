@@ -1,0 +1,25 @@
+[
+  {
+    "id": "rag_1",
+    "task_type": "rag",
+    "query": "How does the Sovereign AI memory manager handle concurrent model switch requests?",
+    "context_chunks": [
+      "The C++ fast core memory manager implements a thread-safe single heavy model invariant using Win32 Critical Sections or POSIX mutexes.",
+      "When a request requires a model switch (e.g., from chat model to coder model), the memory manager marks the active model as evicting, unloads its VRAM allocation, and loads the target model.",
+      "Lightweight CPU-only components like the cross-density reranker and embedding pipelines remain in system RAM (16 GB) without competing for the 8 GB GPU VRAM.",
+      "If concurrent requests target different models, the memory manager queues the second request or schedules execution to avoid GPU out-of-memory errors."
+    ],
+    "expected_answer_contains": ["single heavy model invariant", "evicting", "VRAM"]
+  },
+  {
+    "id": "rag_2",
+    "task_type": "rag",
+    "query": "What security mitigations prevent path traversal in tool calls?",
+    "context_chunks": [
+      "The filesystem tool resolves paths against the project workspace root and asserts Path.is_relative_to(root).",
+      "Attempts to access sensitive paths such as /etc/passwd, C:\\Windows\\System32, or parent traversals (../) trigger a SecurityException and are logged to the audit service.",
+      "File upload handlers strip directory components using Path(filename).name to eliminate remote path injection vectors."
+    ],
+    "expected_answer_contains": ["is_relative_to", "SecurityException"]
+  }
+]

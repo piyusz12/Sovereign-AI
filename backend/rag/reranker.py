@@ -73,13 +73,13 @@ class RerankerService:
                 model=model_id,
                 query=query,
                 documents=texts,
-                timeout=30.0
+                timeout=10.0
             )
             response = await model_gateway.rerank(request)
             scores = response.scores
         except Exception as e:
-            logger.error("Reranking failed: %s", e)
-            raise RetrievalServiceError("Knowledge search is temporarily unavailable. No external service was contacted.") from e
+            logger.info("Gateway reranker unavailable (%s); using lightweight CPU reranker.", e)
+            scores = self._cpu_fast_rerank(query, texts)
             
         scored = []
         for doc, score in zip(documents, scores):
@@ -87,6 +87,34 @@ class RerankerService:
 
         scored.sort(key=lambda x: x["_rerank_score"], reverse=True)
         return scored[:top_k]
+
+    @staticmethod
+    def _cpu_fast_rerank(query: str, documents: list[str]) -> list[float]:
+        """
+        Lightweight CPU cross-scoring fallback (Priority 7 in blueprint).
+        Calculates term-frequency and lexical co-occurrence density
+        without allocating any GPU VRAM.
+        """
+        import re
+        import math
+        tokens = [t.lower() for t in re.findall(r"\w+", query) if len(t) > 2]
+        if not tokens:
+            return [0.5] * len(documents)
+
+        scores = []
+        for text in documents:
+            lower = text.lower()
+            if not lower:
+                scores.append(0.0)
+                continue
+
+            matches = sum(1 for t in tokens if t in lower)
+            freq = sum(lower.count(t) for t in tokens)
+            length_factor = 1.0 / (1.0 + math.log(max(1, len(lower.split()))))
+            score = (matches / len(tokens)) * 0.7 + min(0.3, freq * 0.05 * length_factor)
+            scores.append(round(min(1.0, max(0.0, score)), 4))
+
+        return scores
 
 
 

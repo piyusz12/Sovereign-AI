@@ -26,7 +26,7 @@ def _validate_path(file_path: str) -> Path:
     resolved = Path(file_path).resolve()
     for allowed in ALLOWED_DIRS:
         allowed_resolved = Path(allowed).resolve()
-        if str(resolved).startswith(str(allowed_resolved)):
+        if resolved == allowed_resolved or resolved.is_relative_to(allowed_resolved):
             return resolved
     raise PermissionError(f"Path '{file_path}' is outside allowed directories")
 

@@ -9,7 +9,7 @@ from backend.security.engine import SecurityContext, SecurityResult, Decision
 
 def rule_allow_safe_reads(context: SecurityContext) -> SecurityResult | None:
     """Allow safe read operations."""
-    safe_actions = ["read_file", "list_files", "search_documents", "calculate"]
+    safe_actions = ["read_file", "list_files", "search_documents", "calculate", "inspect_image"]
     if context.action in safe_actions:
         return SecurityResult(Decision.ALLOW, "Read-only operation allowed")
     return None

@@ -15,7 +15,7 @@ import time
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, Depends
+from fastapi import APIRouter, File, HTTPException, UploadFile, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -345,7 +345,7 @@ async def upload_document(
     upload_dir = Path("data/uploads")
     upload_dir.mkdir(parents=True, exist_ok=True)
     
-    safe_filename = file.filename or "unknown.pdf"
+    safe_filename = Path(file.filename or "unknown.pdf").name
     file_path = upload_dir / f"{uuid.uuid4().hex[:8]}_{safe_filename}"
     
     try:
@@ -534,14 +534,46 @@ class LoginRequest(BaseModel):
 
 
 @router.post("/auth/login")
-async def login(request: LoginRequest):
+async def login(request: Request):
     """
     Authenticate with username/password and receive a JWT token.
     All authentication is local — no external identity providers.
+    Supports both JSON payloads and Form Data.
     """
     from backend.security.auth import authenticate_user, create_access_token
 
-    user = authenticate_user(request.username, request.password)
+    username = None
+    password = None
+
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            body = await request.json()
+            if isinstance(body, dict):
+                username = body.get("username")
+                password = body.get("password")
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid JSON body")
+    else:
+        try:
+            form = await request.form()
+            username = form.get("username")
+            password = form.get("password")
+        except Exception:
+            pass
+        if not username or not password:
+            try:
+                body = await request.json()
+                if isinstance(body, dict):
+                    username = body.get("username")
+                    password = body.get("password")
+            except Exception:
+                pass
+
+    if not username or not password:
+        raise HTTPException(status_code=422, detail="Username and password are required")
+
+    user = authenticate_user(str(username), str(password))
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 

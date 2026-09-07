@@ -14,7 +14,12 @@ from backend.model_gateway.schemas import (
     InferenceMetadata,
 )
 from backend.model_gateway.provider import LLMProvider
-from backend.model_gateway.client import OllamaGatewayProvider, VLLMGatewayProvider, InfinityGatewayProvider
+from backend.model_gateway.client import (
+    OllamaGatewayProvider,
+    VLLMGatewayProvider,
+    InfinityGatewayProvider,
+    LlamaCppGatewayProvider,
+)
 from backend.models.registry import get_model
 from backend.audit.service import audit_service
 from backend.optimization.scheduler import gpu_scheduler
@@ -37,6 +42,8 @@ class ModelGateway:
                 self._providers[backend_type] = VLLMGatewayProvider()
             elif backend_type == "infinity":
                 self._providers[backend_type] = InfinityGatewayProvider()
+            elif backend_type in ("llamacpp", "llama.cpp"):
+                self._providers[backend_type] = LlamaCppGatewayProvider()
             else:
                 self._providers[backend_type] = OllamaGatewayProvider()
                 

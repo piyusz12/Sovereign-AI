@@ -299,3 +299,109 @@ class InfinityGatewayProvider(LLMProvider):
                 return response.status_code == 200
         except Exception:
             return False
+
+
+class LlamaCppGatewayProvider(LLMProvider):
+    """
+    Direct llama.cpp server provider.
+    Runs 4-bit GGUF models directly on the RTX 4060 with full CUDA offloading (-ngl 999).
+    """
+
+    def __init__(self, base_url: str = "http://localhost:8080"):
+        self.base_url = base_url.rstrip("/")
+        self.provider_name = "llama.cpp"
+
+    async def generate(self, request: GatewayInferenceRequest) -> GatewayInferenceResponse:
+        start_time = time.time()
+        messages = [msg.model_dump() for msg in request.messages]
+        payload = {
+            "model": _provider_model_id(request.model),
+            "messages": messages,
+            "temperature": request.temperature,
+            "max_tokens": request.max_tokens,
+            "stream": False,
+        }
+        if request.response_format:
+            payload["response_format"] = (
+                {"type": "json_object"} if request.response_format == "json" else request.response_format
+            )
+
+        async with httpx.AsyncClient(timeout=request.timeout) as client:
+            resp = await client.post(f"{self.base_url}/v1/chat/completions", json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+
+        latency_ms = (time.time() - start_time) * 1000
+        choice = data.get("choices", [{}])[0]
+        content = choice.get("message", {}).get("content", "")
+        usage = data.get("usage", {})
+
+        metadata = InferenceMetadata(
+            request_id=f"REQ-{uuid.uuid4().hex[:8].upper()}",
+            model=request.model,
+            provider=self.provider_name,
+            latency_ms=latency_ms,
+            output_tokens=usage.get("completion_tokens", 0),
+            prompt_tokens=usage.get("prompt_tokens", 0),
+            status="success",
+            finish_reason=choice.get("finish_reason", "stop"),
+        )
+        return GatewayInferenceResponse(content=content, metadata=metadata)
+
+    async def stream(self, request: GatewayInferenceRequest) -> AsyncIterator[GatewayStreamChunk]:
+        import json
+
+        messages = [msg.model_dump() for msg in request.messages]
+        start_time = time.time()
+        request_id = f"REQ-{uuid.uuid4().hex[:8].upper()}"
+
+        payload = {
+            "model": _provider_model_id(request.model),
+            "messages": messages,
+            "temperature": request.temperature,
+            "max_tokens": request.max_tokens,
+            "stream": True,
+        }
+
+        async with httpx.AsyncClient(timeout=request.timeout) as client:
+            async with client.stream("POST", f"{self.base_url}/v1/chat/completions", json=payload) as response:
+                async for line in response.aiter_lines():
+                    if not line or not line.startswith("data: "):
+                        continue
+                    line_data = line[6:].strip()
+                    if line_data == "[DONE]":
+                        yield GatewayStreamChunk(
+                            content="",
+                            done=True,
+                            metadata=InferenceMetadata(
+                                request_id=request_id,
+                                model=request.model,
+                                provider=self.provider_name,
+                                latency_ms=(time.time() - start_time) * 1000,
+                                output_tokens=0,
+                                prompt_tokens=0,
+                                status="success",
+                            ),
+                        )
+                        break
+                    try:
+                        chunk_json = json.loads(line_data)
+                        delta = chunk_json.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                        if delta:
+                            yield GatewayStreamChunk(content=delta, done=False)
+                    except Exception:
+                        continue
+
+    async def load_model(self, model_id: str) -> bool:
+        return True
+
+    async def unload_model(self, model_id: str) -> bool:
+        return True
+
+    async def is_running(self) -> bool:
+        try:
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                res = await client.get(f"{self.base_url}/health")
+                return res.status_code == 200
+        except Exception:
+            return False

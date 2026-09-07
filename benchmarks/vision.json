@@ -1,0 +1,16 @@
+[
+  {
+    "id": "vision_1",
+    "task_type": "vision",
+    "prompt": "Extract all structural tables and header text from the technical schematic image at 'tests/fixtures/sample_diagram.png'. Identify any bounding box overlaps.",
+    "mock_image_path": "tests/fixtures/sample_diagram.png",
+    "expected_output_type": "json_table"
+  },
+  {
+    "id": "vision_2",
+    "task_type": "vision",
+    "prompt": "Inspect the UI mockup screenshot and extract all form field labels, input types, and submit button colors.",
+    "mock_image_path": "tests/fixtures/sample_ui.png",
+    "expected_output_type": "form_schema"
+  }
+]

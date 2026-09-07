@@ -82,9 +82,25 @@ def _extract_json(text: str) -> dict[str, Any]:
         raise ReasoningServiceError(f"Malformed JSON from model: {exc}\n{text[:300]}") from exc
 
 
+def _run_async_safely(coro: Any) -> Any:
+    """Execute coroutine safely even if an event loop is already running."""
+    import asyncio
+    import concurrent.futures
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(lambda: asyncio.run(coro))
+            return future.result()
+    else:
+        return asyncio.run(coro)
+
+
 def _chat(system_prompt: str, user_prompt: str, *, timeout: float = DEFAULT_TIMEOUT_SECONDS, max_retries: int = 2) -> str:
     import time
-    import asyncio
     from backend.models import route_task, RoutingRequest, TaskType
     from backend.model_gateway import model_gateway, GatewayInferenceRequest, ChatMessage
     
@@ -99,14 +115,13 @@ def _chat(system_prompt: str, user_prompt: str, *, timeout: float = DEFAULT_TIME
         try:
             # Phase 27: Select the reasoning model dynamically
             route = route_task(RoutingRequest(task_type=TaskType.GENERAL_CHAT))
-            # Since this function is sync and runs in a thread pool, we run the async code inline
             request = GatewayInferenceRequest(
                 model=route.selected_model,
                 messages=[ChatMessage(**m) for m in messages],
                 temperature=0.1,
                 response_format="json" if "JSON" in system_prompt else None,
             )
-            response = asyncio.run(model_gateway.generate(request))
+            response = _run_async_safely(model_gateway.generate(request))
             content = response.content
             
             duration = (time.time() - start_time) * 1000

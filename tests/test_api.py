@@ -20,7 +20,7 @@ def auth_client(client):
     """Create an authenticated test client for the FastAPI app."""
     response = client.post(
         "/api/v1/auth/login",
-        data={"username": "admin", "password": "admin123"} 
+        json={"username": "admin", "password": "admin123"} 
     )
     token = response.json()["access_token"]
     client.headers.update({"Authorization": f"Bearer {token}"})
