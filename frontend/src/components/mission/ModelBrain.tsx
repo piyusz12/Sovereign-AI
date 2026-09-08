@@ -62,9 +62,8 @@ export function ModelBrain() {
 
         {/* Branch lines */}
         <div className="flex items-start justify-center gap-0 mt-2 w-full max-w-sm">
-          {models.map((model, idx) => {
+          {models.map((model) => {
             const isSelected = model.name === selectedModel;
-            const isCenter = idx === Math.floor(models.length / 2);
 
             return (
               <div key={model.id} className="flex flex-col items-center flex-1">

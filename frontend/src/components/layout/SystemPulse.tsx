@@ -6,7 +6,6 @@
  */
 
 import { useAppStore } from '@/store/appStore';
-import { useMissionStore } from '@/store/missionStore';
 
 function TelemetryRow({ label, value, unit, color }: { label: string; value: string | number; unit?: string; color?: string }) {
   return (
@@ -34,7 +33,6 @@ function ProgressBar({ value, max, color }: { value: number; max: number; color:
 
 export function SystemPulse() {
   const { telemetry, routing, trust } = useAppStore();
-  const activeMission = useMissionStore((s) => s.getActiveMission());
 
   const vramPercent = Math.round((telemetry.vram_used_mb / telemetry.vram_total_mb) * 100);
   const gpuColor = telemetry.gpu_percent > 85 ? 'var(--color-error)' : telemetry.gpu_percent > 60 ? 'var(--color-amber-primary)' : 'var(--color-verified)';

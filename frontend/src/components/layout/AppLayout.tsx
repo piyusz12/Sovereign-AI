@@ -13,7 +13,6 @@
 
 import { useEffect } from 'react';
 import { useAppStore } from '@/store/appStore';
-import { useMissionStore } from '@/store/missionStore';
 import { api } from '@/services/api';
 
 import { TopBar } from './TopBar';
@@ -24,7 +23,7 @@ import { CommandBar } from './CommandBar';
 import { TrustCenter } from '../trust/TrustCenter';
 
 export function AppLayout() {
-  const { ui, updateTelemetry, updateTrust, updateRouting, setCurrentUser } = useAppStore();
+  const { ui, updateTelemetry, updateTrust, setCurrentUser } = useAppStore();
   const { rightPanelVisible } = ui;
   const activeView = ui.activeView;
 

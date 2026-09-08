@@ -5,7 +5,7 @@
  * network monitoring metrics, and ALL LOCAL verification.
  */
 
-import { Shield, Lock, Globe, Server, FileText, Cpu, ArrowDown } from 'lucide-react';
+import { Shield, Lock, FileText, Cpu, ArrowDown } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
 
 function TrustMetricCard({

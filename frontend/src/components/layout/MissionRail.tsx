@@ -7,9 +7,7 @@
 
 import {
   Plus,
-  Target,
   CheckCircle2,
-  Archive,
   FileText,
   Wrench,
   Code,
@@ -101,7 +99,6 @@ export function MissionRail() {
                 backgroundColor: activeMissionId === m.id ? 'var(--color-amber-muted)' : 'var(--color-deck-surface)',
                 border: `1px solid ${activeMissionId === m.id ? 'var(--color-amber-border)' : 'var(--color-deck-border)'}`,
                 color: activeMissionId === m.id ? 'var(--color-amber-primary)' : 'var(--color-text-muted)',
-                ringColor: 'var(--color-amber-border)',
               }}
               title={m.title}
             >

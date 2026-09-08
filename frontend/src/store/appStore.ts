@@ -61,6 +61,13 @@ export interface UIState {
   activeView: 'command' | 'missions' | 'knowledge' | 'artifacts' | 'trust' | 'system';
 }
 
+export interface SystemStatus {
+  localOnly: boolean;
+  queueDepth: number;
+  activeWorkflows: number;
+  hardwareProfile: HardwareProfile;
+}
+
 export interface AppStore {
   // System
   telemetry: SystemTelemetry;
@@ -68,6 +75,7 @@ export interface AppStore {
   routing: ModelRouting;
   hardware: HardwareProfile;
   queueDepth: number;
+  systemStatus: SystemStatus;
 
   // UI
   ui: UIState;
@@ -80,6 +88,7 @@ export interface AppStore {
   updateTrust: (data: Partial<TrustMetrics>) => void;
   updateRouting: (data: Partial<ModelRouting>) => void;
   updateHardware: (data: Partial<HardwareProfile>) => void;
+  updateSystemStatus: (status: Partial<SystemStatus>) => void;
   setQueueDepth: (depth: number) => void;
   setActiveView: (view: UIState['activeView']) => void;
   toggleRightPanel: () => void;
@@ -136,6 +145,18 @@ export const useAppStore = create<AppStore>((set) => ({
 
   queueDepth: 0,
 
+  systemStatus: {
+    localOnly: true,
+    queueDepth: 0,
+    activeWorkflows: 0,
+    hardwareProfile: {
+      name: 'NVIDIA RTX 4060 Laptop',
+      gpu_name: 'RTX 4060 (8GB)',
+      ram_mb: 16384,
+      vram_mb: 8192,
+    },
+  },
+
   ui: {
     rightPanelVisible: true,
     leftPanelCollapsed: false,
@@ -156,6 +177,16 @@ export const useAppStore = create<AppStore>((set) => ({
 
   updateHardware: (data) =>
     set((s) => ({ hardware: { ...s.hardware, ...data } })),
+
+  updateSystemStatus: (status) =>
+    set((s) => ({
+      systemStatus: {
+        ...s.systemStatus,
+        ...status,
+      },
+      queueDepth: status.queueDepth !== undefined ? status.queueDepth : s.queueDepth,
+      hardware: status.hardwareProfile ? { ...s.hardware, ...status.hardwareProfile } : s.hardware,
+    })),
 
   setQueueDepth: (depth) => set({ queueDepth: depth }),
 

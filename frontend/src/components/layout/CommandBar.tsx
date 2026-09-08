@@ -9,13 +9,7 @@ import { useState, useRef, useEffect } from 'react';
 import {
   Plus,
   Paperclip,
-  Play,
-  Eye,
-  ClipboardCheck,
-  Download,
-  ListChecks,
   X,
-  ChevronUp,
 } from 'lucide-react';
 import { useMissionStore, type MissionType } from '@/store/missionStore';
 import { useAppStore } from '@/store/appStore';
@@ -24,7 +18,6 @@ export function CommandBar() {
   const [command, setCommand] = useState('');
   const [attachments, setAttachments] = useState<string[]>([]);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [missionType, setMissionType] = useState<MissionType>('general');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const { runDemoMission } = useMissionStore();

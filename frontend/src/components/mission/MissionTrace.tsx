@@ -14,7 +14,7 @@ interface MissionTraceProps {
   baseTime?: number;
 }
 
-export function MissionTrace({ trace, baseTime }: MissionTraceProps) {
+export function MissionTrace({ trace }: MissionTraceProps) {
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
 
   if (!trace || trace.length === 0) {

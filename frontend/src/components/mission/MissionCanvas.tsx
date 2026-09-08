@@ -15,7 +15,6 @@ import {
   Brain,
   Rocket,
   Download,
-  RotateCcw,
   Clock,
 } from 'lucide-react';
 import { useMissionStore } from '@/store/missionStore';
