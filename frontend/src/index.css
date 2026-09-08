@@ -1,20 +1,266 @@
 @import "tailwindcss";
 
+/* ═══════════════════════════════════════════════════════════
+   SOVEREIGN COMMAND DECK — Industrial Design System
+   Deep graphite + Electric amber + Muted steel
+   ═══════════════════════════════════════════════════════════ */
+
 @theme {
-  --color-primary: #3b82f6;
-  --color-primary-dark: #2563eb;
-  --color-surface: #1e293b;
-  --color-surface-hover: #334155;
-  --color-border: #475569;
+  /* ── Base surfaces ── */
+  --color-deck-void: #0a0b0f;
+  --color-deck-deep: #0f1117;
+  --color-deck-base: #161922;
+  --color-deck-surface: #1c1f2e;
+  --color-deck-elevated: #252938;
+  --color-deck-hover: #2d3245;
+  --color-deck-border: rgba(255, 255, 255, 0.06);
+  --color-deck-border-subtle: rgba(255, 255, 255, 0.03);
+
+  /* ── Text ── */
+  --color-text-primary: #e8eaed;
+  --color-text-secondary: #8b8fa3;
+  --color-text-muted: #5a5f73;
+  --color-text-dim: #3d4155;
+
+  /* ── Primary Accent: Electric Amber ── */
+  --color-amber-primary: #f59e0b;
+  --color-amber-hover: #d97706;
+  --color-amber-muted: rgba(245, 158, 11, 0.15);
+  --color-amber-glow: rgba(245, 158, 11, 0.25);
+  --color-amber-border: rgba(245, 158, 11, 0.3);
+
+  /* ── Semantic: Verified / Green ── */
+  --color-verified: #22c55e;
+  --color-verified-muted: rgba(34, 197, 94, 0.12);
+  --color-verified-border: rgba(34, 197, 94, 0.25);
+  --color-verified-glow: rgba(34, 197, 94, 0.3);
+
+  /* ── Semantic: Running / Amber ── */
+  --color-running: #f59e0b;
+  --color-running-muted: rgba(245, 158, 11, 0.12);
+  --color-running-border: rgba(245, 158, 11, 0.25);
+
+  /* ── Semantic: Error / Red ── */
+  --color-error: #ef4444;
+  --color-error-muted: rgba(239, 68, 68, 0.12);
+  --color-error-border: rgba(239, 68, 68, 0.25);
+
+  /* ── Semantic: Info / Blue ── */
+  --color-info: #3b82f6;
+  --color-info-muted: rgba(59, 130, 246, 0.12);
+  --color-info-border: rgba(59, 130, 246, 0.25);
+
+  /* ── Semantic: Queued / Steel ── */
+  --color-queued: #64748b;
+  --color-queued-muted: rgba(100, 116, 139, 0.12);
+
+  /* ── Font families ── */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
 }
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ═══════════════════════════════════════════════════════════
+   GLOBAL RESETS
+   ═══════════════════════════════════════════════════════════ */
+
 html, body {
-  @apply bg-slate-900 text-slate-100 antialiased h-full w-full overflow-hidden;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: var(--color-deck-void);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
 }
 
 #root {
-  @apply h-full w-full;
+  height: 100%;
+  width: 100%;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SCROLLBAR — Industrial thin style
+   ═══════════════════════════════════════════════════════════ */
+
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ANIMATIONS — State-driven, not decorative
+   ═══════════════════════════════════════════════════════════ */
+
+@keyframes sovereign-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes node-running {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
+  50% { box-shadow: 0 0 12px 2px rgba(245, 158, 11, 0.15); }
+}
+
+@keyframes node-verified {
+  0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
+  100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+
+@keyframes data-flow {
+  0% { background-position: 0% 0%; }
+  100% { background-position: 0% 100%; }
+}
+
+@keyframes slide-up {
+  0% { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes progress-stripe {
+  0% { background-position: 1rem 0; }
+  100% { background-position: 0 0; }
+}
+
+@keyframes telemetry-update {
+  0% { color: var(--color-amber-primary); }
+  100% { color: var(--color-text-primary); }
+}
+
+.animate-sovereign-pulse {
+  animation: sovereign-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.animate-node-running {
+  animation: node-running 2s ease-in-out infinite;
+}
+
+.animate-node-verified {
+  animation: node-verified 0.6s ease-out forwards;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out forwards;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out forwards;
+}
+
+.animate-telemetry {
+  animation: telemetry-update 0.8s ease-out;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   UTILITY CLASSES
+   ═══════════════════════════════════════════════════════════ */
+
+.font-instrument {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.font-instrument-lg {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.font-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.surface-panel {
+  background-color: var(--color-deck-surface);
+  border: 1px solid var(--color-deck-border);
+}
+
+.surface-elevated {
+  background-color: var(--color-deck-elevated);
+  border: 1px solid var(--color-deck-border);
+}
+
+.surface-card {
+  background-color: var(--color-deck-base);
+  border: 1px solid var(--color-deck-border);
+  border-radius: 8px;
+}
+
+/* Pipeline connector line */
+.pipeline-connector {
+  width: 2px;
+  background: linear-gradient(
+    180deg,
+    var(--color-deck-border) 0%,
+    rgba(245, 158, 11, 0.3) 50%,
+    var(--color-deck-border) 100%
+  );
+  background-size: 2px 40px;
+}
+
+.pipeline-connector-active {
+  animation: data-flow 1.5s linear infinite;
+}
+
+/* Glow effects for status indicators */
+.glow-amber {
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.3), 0 0 20px rgba(245, 158, 11, 0.1);
+}
+
+.glow-green {
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.3), 0 0 20px rgba(34, 197, 94, 0.1);
+}
+
+.glow-red {
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.3), 0 0 20px rgba(239, 68, 68, 0.1);
+}
+
+/* Progress bar with stripe animation */
+.progress-striped {
+  background-image: linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.06) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(255, 255, 255, 0.06) 50%,
+    rgba(255, 255, 255, 0.06) 75%,
+    transparent 75%,
+    transparent
+  );
+  background-size: 1rem 1rem;
+  animation: progress-stripe 0.5s linear infinite;
 }
