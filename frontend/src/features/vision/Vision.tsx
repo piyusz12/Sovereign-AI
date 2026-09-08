@@ -61,17 +61,15 @@ export default function Vision() {
       setModelUsed(res.model_used || 'llama3.2-vision:latest');
       setAnalysisDuration(res.duration_ms || 1200);
     } catch (err: any) {
-      // Fallback local analysis representation
+      const message = err instanceof Error ? err.message : 'Vision request failed';
       setAnalysisResult(
-        `[Sovereign Vision Engine] Analysis completed on local GPU.\n\n` +
-          `• Target: Industrial Engineering Diagram / Image\n` +
-          `• Detected Entities: Vessel V-101 (Primary Separator), Flow Control Valve FCV-12 (Inlet), Heat Exchanger E-204\n` +
-          `• Integrity Status: All pressure vessel boundaries verified compliant with ASME Sec VIII.\n` +
-          `• Zero-Egress Confirmation: Image buffer never uploaded to WAN.\n\n` +
-          `Telemetry: ${(err.message ? `Backend message: ${err.message}` : 'Local inference verified.')}`
+        `[Sovereign Vision Engine] Analysis unavailable.\n\n` +
+          `The image was not analyzed because the vision backend could not be reached.\n\n` +
+          `Backend message: ${message}\n\n` +
+          `Start the backend on http://127.0.0.1:8080 and try again.`
       );
-      setModelUsed('llama3.2-vision:latest');
-      setAnalysisDuration(1420);
+      setModelUsed('Unavailable');
+      setAnalysisDuration(null);
     } finally {
       setIsAnalyzing(false);
     }

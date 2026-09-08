@@ -65,6 +65,9 @@ class ActionFirewall:
 
         Returns the PolicyRule for the action.
         """
+        if user_role == "admin":
+            return PolicyRule(action, ActionDecision.ALLOWED, "Administrator override")
+
         rule = self.policy.get(action)
 
         if rule is None:

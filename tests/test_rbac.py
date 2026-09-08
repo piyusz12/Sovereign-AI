@@ -52,6 +52,7 @@ class TestRBAC:
         """Finance cannot execute code."""
         assert rbac.has_permission("engineering", "agent.execute_code") is True
         assert rbac.has_permission("finance", "agent.execute_code") is False
+        assert rbac.has_permission("admin", "any.permission") is True
 
     def test_qdrant_filter_admin(self, rbac):
         """Admin gets no filter (sees everything)."""

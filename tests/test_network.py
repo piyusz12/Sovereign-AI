@@ -45,6 +45,13 @@ class TestActionFirewall:
         attempts = fw.get_blocked_attempts()
         assert len(attempts) == 2
 
+    def test_admin_can_override_policy(self):
+        """Administrators can execute any action, including restricted actions."""
+        fw = ActionFirewall()
+        assert fw.check("send_external", user_role="admin").decision == ActionDecision.ALLOWED
+        assert fw.check("delete_file", user_role="admin").decision == ActionDecision.ALLOWED
+        assert fw.check("unknown_action", user_role="admin").decision == ActionDecision.ALLOWED
+
 
 class TestSovereigntyMonitor:
     """Test sovereignty network monitor."""

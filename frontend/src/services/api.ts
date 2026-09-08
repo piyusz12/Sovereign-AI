@@ -126,16 +126,30 @@ class ApiClient {
     return this.currentUser;
   }
 
-  private async fetchAuth(url: string, options: RequestInit = {}): Promise<Response> {
+  private async fetchAuth(
+    url: string,
+    options: RequestInit = {},
+    retryAfterLogin = true,
+  ): Promise<Response> {
     await this.ensureAuthenticated();
     const headers = new Headers(options.headers || {});
     if (this.token) {
       headers.set('Authorization', `Bearer ${this.token}`);
     }
-    return fetch(url, {
+    const response = await fetch(url, {
       ...options,
       headers,
     });
+
+    if (response.status === 401 && retryAfterLogin) {
+      this.logout();
+      await this.loginDefault();
+      if (this.token) {
+        return this.fetchAuth(url, options, false);
+      }
+    }
+
+    return response;
   }
 
   // --- Health & Sovereignty ---

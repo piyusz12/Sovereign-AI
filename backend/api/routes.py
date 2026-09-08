@@ -303,9 +303,9 @@ async def analyze_vision(request: VisionAnalyzeRequest):
         return VisionAnalyzeResponse(
             content=result.content,
             route={
-                "task_type": "vision",
-                "model_category": "vision",
-                "model_name": result.model_used,
+                "task_type": TaskType.VISION,
+                "model": ModelName.QWEN3_VL_8B,
+                "reason": "Dedicated vision route using the local vision model",
             },
             model_used=result.model_used,
             duration_ms=result.duration_ms,

@@ -122,6 +122,9 @@ class BaseTool(ABC):
 
     def has_permission(self, user_role: str) -> bool:
         """Check if the user role has permission to use this tool via RBAC."""
+        if user_role == "admin":
+            return True
+
         if self.permission.allowed_roles is not None:
             if user_role not in self.permission.allowed_roles:
                 return False

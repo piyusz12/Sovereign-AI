@@ -12,6 +12,9 @@ import {
   Check,
   Copy,
   X,
+  MessageSquare,
+  Send,
+  Download,
 } from 'lucide-react';
 import { api } from '@/services/api';
 
@@ -23,60 +26,7 @@ interface CodeFile {
   status: 'modified' | 'saved' | 'error';
 }
 
-const DEFAULT_FILES: CodeFile[] = [
-  {
-    id: '1',
-    name: 'main.py',
-    language: 'python',
-    status: 'saved',
-    content: `"""
-Sovereign AI Telemetry Service
-Runs on local GPU without egress.
-"""
-
-import time
-import psutil
-
-def check_hardware():
-    cpu = psutil.cpu_percent(interval=1)
-    ram = psutil.virtual_memory().percent
-    print(f"[LOCAL HARNESS] CPU: {cpu}% | RAM: {ram}%")
-    return {"cpu": cpu, "ram": ram, "status": "nominal"}
-
-if __name__ == "__main__":
-    status = check_hardware()
-    print("Health check completed successfully.")
-`,
-  },
-  {
-    id: '2',
-    name: 'utils.ts',
-    language: 'typescript',
-    status: 'saved',
-    content: `export function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
-`,
-  },
-  {
-    id: '3',
-    name: 'config.json',
-    language: 'json',
-    status: 'saved',
-    content: `{
-  "sovereignty": {
-    "network_isolation": true,
-    "max_vram_mb": 8192,
-    "default_model": "qwen2.5-coder:7b"
-  }
-}
-`,
-  },
-];
+const DEFAULT_FILES: CodeFile[] = [];
 
 export default function Coding() {
   const [files, setFiles] = useState<CodeFile[]>(DEFAULT_FILES);
@@ -93,8 +43,21 @@ export default function Coding() {
   const [savedFeedback, setSavedFeedback] = useState(false);
   const [showBranchModal, setShowBranchModal] = useState(false);
   const [currentBranch, setCurrentBranch] = useState('main');
+  const [chatInput, setChatInput] = useState('');
+  const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; text: string }>>([
+    { role: 'assistant', text: 'I am ready to help with this project. Ask for a change, explain an error, or request a review.' },
+  ]);
+  const [isChatting, setIsChatting] = useState(false);
+  const [isAssigning, setIsAssigning] = useState(false);
+  const [taskResult, setTaskResult] = useState<{ success: boolean; text: string } | null>(null);
 
-  const activeFile = files.find((f) => f.id === activeFileId) || files[0];
+  const activeFile = files.find((f) => f.id === activeFileId) || {
+    id: '',
+    name: 'No file selected',
+    language: 'text',
+    status: 'saved' as const,
+    content: '',
+  };
 
   const handleContentChange = (newContent: string) => {
     setFiles((prev) =>
@@ -105,6 +68,7 @@ export default function Coding() {
   };
 
   const handleSave = () => {
+    if (!activeFile.id) return;
     setFiles((prev) =>
       prev.map((f) => (f.id === activeFile.id ? { ...f, status: 'saved' } : f))
     );
@@ -122,7 +86,7 @@ export default function Coding() {
 
   const handleGenerate = async (presetPrompt?: string) => {
     const p = presetPrompt || prompt;
-    if (!p.trim() || isGenerating) return;
+    if (!p.trim() || isGenerating || !activeFile.id) return;
 
     setIsGenerating(true);
     setTerminalOutputs((prev) => [
@@ -188,6 +152,7 @@ if __name__ == "__main__":
   };
 
   const handleRunCode = async () => {
+    if (!activeFile.id) return;
     setIsRunning(true);
     setTerminalOutputs((prev) => [
       {
@@ -253,6 +218,101 @@ if __name__ == "__main__":
     setTimeout(() => setCopied(false), 1500);
   };
 
+  const handleDownloadOutput = () => {
+    const report = [
+      `Sovereign Coding Agent - Execution Report`,
+      `File: ${activeFile.name}`,
+      `Generated: ${new Date().toISOString()}`,
+      '',
+      ...terminalOutputs.map((item) => `[${item.timestamp}] ${item.type.toUpperCase()}\n${item.message}`),
+    ].join('\n\n');
+    const blob = new Blob([report], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `execution-result-${Date.now()}.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleChat = async () => {
+    const message = chatInput.trim();
+    if (!message || isChatting) return;
+    setChatInput('');
+    setChatMessages((current) => [...current, { role: 'user', text: message }]);
+    setIsChatting(true);
+    try {
+      const response = await api.chat(message, undefined, 'coding');
+      setChatMessages((current) => [...current, { role: 'assistant', text: response.response || 'No response returned.' }]);
+    } catch (err) {
+      setChatMessages((current) => [
+        ...current,
+        { role: 'assistant', text: `Model connection failed: ${err instanceof Error ? err.message : 'unknown error'}` },
+      ]);
+    } finally {
+      setIsChatting(false);
+    }
+  };
+
+  const handleAssignAndExecute = async () => {
+    const task = chatInput.trim();
+    if (!task || isAssigning) return;
+    setChatInput('');
+    setIsAssigning(true);
+    setChatMessages((current) => [...current, { role: 'user', text: `Assign and execute: ${task}` }]);
+    setTerminalOutputs((current) => [
+      { type: 'info', message: `Task assigned to the coding model: ${task}`, timestamp: new Date().toLocaleTimeString() },
+      ...current,
+    ]);
+
+    try {
+      const executionPrompt = [
+        'Complete this task as a standalone executable program.',
+        'Do not only describe the solution or return a partial snippet.',
+        'The program must print a concise final result when it runs.',
+        `Task: ${task}`,
+      ].join('\n');
+      const generated = await api.generateCode(executionPrompt, activeFile.id ? activeFile.language : 'python');
+      const code = generated?.code_blocks?.[0]?.code || generated?.raw_response;
+      if (!code?.trim()) throw new Error('The coding model returned no executable code.');
+
+      const file = activeFile.id
+        ? { ...activeFile, content: code, status: 'modified' as const }
+        : { id: `generated-${Date.now()}`, name: 'main.py', language: 'python', content: code, status: 'modified' as const };
+      setFiles((current) => activeFile.id ? current.map((item) => item.id === activeFile.id ? file : item) : [file]);
+      setActiveFileId(file.id);
+      setTerminalOutputs((current) => [
+        { type: 'info', message: `Generated ${file.name}. Starting sandbox execution...`, timestamp: new Date().toLocaleTimeString() },
+        ...current,
+      ]);
+
+      const result = await api.executeCode(code, file.language);
+      const success = result.exit_code === 0;
+      const executionOutput = (result.stdout || result.stderr || '').trim();
+      setTaskResult({
+        success,
+        text: executionOutput || (success ? 'The program finished successfully with no printed output.' : `Execution finished with exit code ${result.exit_code}.`),
+      });
+      setTerminalOutputs((current) => [
+        { type: success ? 'success' : 'error', message: executionOutput || `Execution finished with exit code ${result.exit_code}.`, timestamp: new Date().toLocaleTimeString() },
+        { type: success ? 'success' : 'error', message: `Sandbox finished. Exit code: ${result.exit_code} | Duration: ${result.execution_time_ms || 0}ms`, timestamp: new Date().toLocaleTimeString() },
+        ...current,
+      ]);
+      setChatMessages((current) => [...current, {
+        role: 'assistant',
+        text: success
+          ? `Task completed. Result${executionOutput ? `:\n${executionOutput}` : ': The program finished successfully with no printed output.'}`
+          : `Task execution failed${executionOutput ? `:\n${executionOutput}` : '.'}`,
+      }]);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Task execution failed';
+      setTerminalOutputs((current) => [{ type: 'error', message, timestamp: new Date().toLocaleTimeString() }, ...current]);
+      setChatMessages((current) => [...current, { role: 'assistant', text: `Task could not be completed: ${message}` }]);
+    } finally {
+      setIsAssigning(false);
+    }
+  };
+
   return (
     <div className="h-full flex flex-col bg-slate-900 overflow-hidden font-sans">
       {/* Header */}
@@ -277,6 +337,7 @@ if __name__ == "__main__":
             </button>
             <button
               onClick={handleSave}
+              disabled={!activeFile.id}
               className="flex items-center px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-lg border border-slate-700 transition-colors"
             >
               {savedFeedback ? (
@@ -293,7 +354,7 @@ if __name__ == "__main__":
             </button>
             <button
               onClick={handleRunCode}
-              disabled={isRunning}
+              disabled={isRunning || !activeFile.id}
               className="flex items-center px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 text-white text-xs font-medium rounded-lg transition-colors shadow-lg shadow-emerald-500/20"
             >
               {isRunning ? (
@@ -311,63 +372,11 @@ if __name__ == "__main__":
           </div>
         </div>
 
-        {/* Prompt Input & Quick Presets */}
-        <div className="space-y-2">
-          <div className="relative">
-            <textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Describe code changes, functions to build, or bug fixes..."
-              rows={2}
-              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 pr-28 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 text-xs resize-none"
-            />
-            <div className="absolute right-3 bottom-3">
-              <button
-                onClick={() => handleGenerate()}
-                disabled={!prompt.trim() || isGenerating}
-                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-600 text-white text-xs font-medium rounded-lg transition-colors flex items-center"
-              >
-                {isGenerating ? (
-                  <>
-                    <Loader2 className="w-3 h-3 animate-spin mr-1.5" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-3 h-3 mr-1.5" />
-                    Generate
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-
-          <div className="flex items-center space-x-2 overflow-x-auto text-[11px] text-slate-400">
-            <span className="text-slate-500 flex-shrink-0">Presets:</span>
-            <button
-              onClick={() => handleGenerate('Write a FastAPI health and GPU telemetry router')}
-              className="px-2.5 py-0.5 rounded-full bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300"
-            >
-              FastAPI Route
-            </button>
-            <button
-              onClick={() => handleGenerate('Build a secure file hash verification function')}
-              className="px-2.5 py-0.5 rounded-full bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300"
-            >
-              File Hash Validator
-            </button>
-            <button
-              onClick={() => handleGenerate('Write a SQLite database migration script')}
-              className="px-2.5 py-0.5 rounded-full bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300"
-            >
-              SQLite Migration
-            </button>
-          </div>
-        </div>
       </header>
 
       {/* Content Area */}
-      <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
+      <div className="flex-1 overflow-hidden flex flex-col">
+        <div className="min-h-0 flex-1 overflow-hidden flex flex-col md:flex-row">
         {/* File Explorer */}
         <aside className="w-full md:w-56 flex-shrink-0 border-r border-slate-800 bg-slate-950/40 overflow-y-auto">
           <div className="p-3 border-b border-slate-800 flex justify-between items-center">
@@ -375,8 +384,10 @@ if __name__ == "__main__":
               <FileCode className="w-3.5 h-3.5 mr-1.5 text-emerald-400" />
               Project Files
             </h3>
+            <span className="text-[10px] text-slate-500">{files.length} file{files.length === 1 ? '' : 's'}</span>
           </div>
           <div className="p-2 space-y-1">
+            {files.length === 0 && <p className="px-3 py-4 text-center text-[11px] text-slate-500">No project files</p>}
             {files.map((file) => (
               <div
                 key={file.id}
@@ -403,9 +414,10 @@ if __name__ == "__main__":
         </aside>
 
         {/* Code Editor Area */}
-        <main className="flex-1 overflow-hidden flex flex-col bg-slate-950/80">
+        <main className="relative min-w-0 flex-1 overflow-hidden flex flex-col bg-slate-950/80">
           {/* Tabs */}
           <div className="flex items-center border-b border-slate-800 bg-slate-950 px-2 overflow-x-auto">
+            <span className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Editor</span>
             {files.map((file) => (
               <button
                 key={file.id}
@@ -434,12 +446,14 @@ if __name__ == "__main__":
           </div>
 
           {/* Editor Input Area */}
-          <div className="flex-1 p-3 overflow-auto flex font-mono text-xs">
+          <div className="min-h-0 flex-1 p-3 overflow-auto flex font-mono text-xs">
             <textarea
               value={activeFile.content}
               onChange={(e) => handleContentChange(e.target.value)}
+              disabled={!activeFile.id}
               spellCheck={false}
-              className="w-full h-full bg-transparent text-slate-200 resize-none outline-none leading-5 font-mono text-xs"
+              placeholder="Select a project file to begin editing."
+              className="w-full h-full bg-transparent text-slate-200 resize-none outline-none leading-5 font-mono text-xs disabled:cursor-default disabled:text-slate-600"
             />
           </div>
 
@@ -455,40 +469,108 @@ if __name__ == "__main__":
               <span>Sovereignty: Isolated Process</span>
             </div>
           </div>
+
         </main>
 
-        {/* Output Panel */}
-        <aside className="w-full md:w-80 flex-shrink-0 border-l border-slate-800 bg-slate-950/60 overflow-y-auto flex flex-col">
-          <div className="p-3 border-b border-slate-800 bg-slate-950 flex justify-between items-center">
-            <h3 className="font-semibold text-slate-200 text-xs flex items-center">
-              <Terminal className="w-3.5 h-3.5 mr-1.5 text-blue-400" />
-              Sandbox Console Output
+        {/* Model Chat */}
+        <aside className="flex h-80 w-full flex-shrink-0 flex-col border-l border-slate-800 bg-slate-950/60 md:h-auto md:w-80">
+          <div className="flex items-center justify-between border-b border-slate-800 bg-slate-950 p-3">
+            <h3 className="flex items-center text-xs font-semibold text-slate-200">
+              <MessageSquare className="mr-1.5 h-3.5 w-3.5 text-emerald-400" />
+              Model Chat
             </h3>
-            <button
-              onClick={() => setTerminalOutputs([])}
-              className="text-[10px] text-slate-500 hover:text-slate-300"
-            >
-              Clear
-            </button>
+            <span className="text-[10px] text-emerald-400">Qwen Coder</span>
           </div>
-          <div className="p-3 space-y-2 flex-1 overflow-y-auto font-mono text-[11px]">
-            {terminalOutputs.map((item, idx) => (
-              <div
-                key={idx}
-                className={`p-2.5 rounded-lg border leading-relaxed whitespace-pre-wrap ${
-                  item.type === 'info'
-                    ? 'text-blue-300 bg-blue-500/10 border-blue-500/20'
-                    : item.type === 'success'
-                    ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20'
-                    : 'text-rose-300 bg-rose-500/10 border-rose-500/20'
-                }`}
-              >
-                <div className="text-[10px] opacity-60 mb-0.5">{item.timestamp}</div>
-                <div>{item.message}</div>
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3 text-xs">
+            {chatMessages.map((message, index) => (
+              <div key={index} className={`rounded-lg border p-2.5 leading-relaxed ${message.role === 'user' ? 'ml-5 border-emerald-500/20 bg-emerald-500/10 text-emerald-100' : 'mr-3 border-slate-800 bg-slate-900 text-slate-300'}`}>
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">{message.role === 'user' ? 'You' : 'Model'}</div>
+                <div className="whitespace-pre-wrap">{message.text}</div>
               </div>
             ))}
+            {isChatting && <div className="text-[11px] text-slate-500">Model is thinking...</div>}
+          </div>
+          <div className="border-t border-slate-800 p-3">
+            <textarea value={chatInput} onChange={(event) => setChatInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); handleChat(); } }} placeholder="Ask the coding model..." rows={3} className="w-full resize-none rounded-lg border border-slate-700 bg-slate-900 p-2.5 text-xs text-slate-100 outline-none placeholder:text-slate-500 focus:border-emerald-500" />
+            <button onClick={handleChat} disabled={!chatInput.trim() || isChatting} className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-emerald-600 py-2 text-xs font-semibold text-white hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-600">
+              <Send className="h-3.5 w-3.5" /> Send to model
+            </button>
+            <button onClick={handleAssignAndExecute} disabled={!chatInput.trim() || isAssigning} className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 py-2 text-xs font-semibold text-amber-300 hover:bg-amber-500/20 disabled:border-slate-700 disabled:bg-slate-900 disabled:text-slate-600">
+              {isAssigning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+              {isAssigning ? 'Executing task...' : 'Assign & Execute'}
+            </button>
+            <button onClick={() => handleGenerate(chatInput)} disabled={!chatInput.trim() || isGenerating || !activeFile.id} className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 py-2 text-xs font-semibold text-slate-300 hover:border-emerald-500/50 hover:text-emerald-300 disabled:text-slate-600">
+              <Sparkles className="h-3.5 w-3.5" /> Generate into {activeFile.name}
+            </button>
           </div>
         </aside>
+        </div>
+
+        <section className="grid h-56 flex-shrink-0 grid-cols-1 border-t-2 border-emerald-500/20 bg-slate-950/95 md:grid-cols-[280px_minmax(0,1fr)]">
+          <div className="border-b border-slate-800 p-3 md:border-b-0 md:border-r">
+            <h3 className="flex items-center border-b border-slate-800 pb-2 text-xs font-semibold text-slate-200">
+              <Loader2 className={`mr-1.5 h-3.5 w-3.5 text-amber-400 ${isAssigning || isRunning ? 'animate-spin' : ''}`} />
+              Execution Process
+            </h3>
+            <div className="space-y-2 pt-3 text-[11px]">
+              {[
+                ['Task assigned', isAssigning || terminalOutputs.length > 1],
+                ['Code generated', Boolean(activeFile.id)],
+                ['Sandbox execution', isRunning || terminalOutputs.some((item) => item.message.includes('Sandbox finished'))],
+                ['Result available', terminalOutputs.some((item) => item.type === 'success' || item.type === 'error')],
+              ].map(([label, complete]) => (
+                <div key={String(label)} className="flex items-center gap-2 text-slate-400">
+                  <span className={`h-2 w-2 rounded-full ${complete ? 'bg-emerald-400' : 'bg-slate-700'}`} />
+                  <span>{label}</span>
+                  <span className="ml-auto text-[10px] text-slate-600">{complete ? 'done' : 'waiting'}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center justify-between border-b border-slate-800 px-3 py-2">
+              <h3 className="flex items-center text-xs font-semibold text-slate-200">
+                <Terminal className="mr-1.5 h-3.5 w-3.5 text-blue-400" />
+                Output
+              </h3>
+              <div className="flex items-center gap-3">
+                <button onClick={handleDownloadOutput} disabled={!terminalOutputs.length} className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-slate-200 disabled:text-slate-700">
+                  <Download className="h-3 w-3" /> Download result
+                </button>
+                <button onClick={() => setTerminalOutputs([])} className="text-[10px] text-slate-500 hover:text-slate-300">
+                  Clear
+                </button>
+              </div>
+            </div>
+            {taskResult && (
+              <div className={`mx-2 mt-2 rounded-lg border p-3 ${taskResult.success ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-rose-500/30 bg-rose-500/10'}`}>
+                <div className="mb-1 flex items-center justify-between">
+                  <span className={`text-[11px] font-semibold ${taskResult.success ? 'text-emerald-300' : 'text-rose-300'}`}>
+                    {taskResult.success ? 'Final result' : 'Task failed'}
+                  </span>
+                  <button
+                    onClick={() => setTaskResult(null)}
+                    aria-label="Close task result"
+                    className="rounded-md p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <pre className="max-h-24 overflow-auto whitespace-pre-wrap font-mono text-[10px] leading-relaxed text-slate-200">
+                  {taskResult.text}
+                </pre>
+              </div>
+            )}
+            <div className="h-[calc(100%-33px)] space-y-2 overflow-y-auto p-2 font-mono text-[10px]">
+              {terminalOutputs.map((item, idx) => (
+                <div key={idx} className={`w-full rounded-lg border p-2 leading-relaxed whitespace-pre-wrap ${item.type === 'info' ? 'border-blue-500/20 bg-blue-500/10 text-blue-300' : item.type === 'success' ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300' : 'border-rose-500/20 bg-rose-500/10 text-rose-300'}`}>
+                  <div className="mb-0.5 opacity-60">{item.timestamp}</div>
+                  <div>{item.message}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
       </div>
 
       {/* Branch Switcher Modal */}
@@ -527,6 +609,7 @@ if __name__ == "__main__":
           </div>
         </div>
       )}
+
     </div>
   );
 }

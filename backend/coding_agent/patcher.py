@@ -6,7 +6,10 @@ def apply_patch(repo_path: str, file_path: str, search_text: str, replace_text: 
     Finds exactly `search_text` inside `file_path` and replaces it with `replace_text`.
     Returns success message or error.
     """
-    full_path = Path(repo_path) / file_path
+    repo = Path(repo_path).resolve()
+    full_path = (repo / file_path).resolve()
+    if full_path != repo and repo not in full_path.parents:
+        return f"Error: File path escapes repository: {file_path}"
     if not full_path.exists():
         # If it doesn't exist, and search_text is empty, create it.
         if search_text == "":

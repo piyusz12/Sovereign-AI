@@ -49,6 +49,11 @@ class SecurityPolicyEngine:
         If any rule explicitly ALLOWS and no subsequent rule DENYs, it is ALLOWED.
         If no rules match, it defaults to DENY (fail-closed).
         """
+        if context.user_role == "admin":
+            result = SecurityResult(Decision.ALLOW, "Administrator override")
+            self._record_audit(context, result)
+            return result
+
         final_decision = None
         final_reason = "No matching rules found (default fail-closed)"
 

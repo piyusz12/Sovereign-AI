@@ -1,7 +1,20 @@
 import json
+import re
 from backend.router.coder_service import generate_code
 from backend.coding_agent.schemas import TaskPlan
 from pydantic import ValidationError
+
+
+def _extract_json(text: str) -> str:
+    """Extract the first JSON object from a model response."""
+    fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL | re.IGNORECASE)
+    if fenced:
+        return fenced.group(1)
+    start = text.find("{")
+    end = text.rfind("}")
+    if start < 0 or end <= start:
+        raise ValueError("model response did not contain a JSON object")
+    return text[start:end + 1]
 
 async def create_plan(request: str, repo_files: list[str]) -> TaskPlan:
     """
@@ -24,18 +37,10 @@ Output ONLY valid JSON matching this schema:
     # Ask the local coding model to generate the JSON plan
     gen = await generate_code(prompt)
     try:
-        # Strip potential markdown blocks
-        raw_json = gen.code
-        if "```json" in raw_json:
-            raw_json = raw_json.split("```json")[1].split("```")[0].strip()
-        elif "```" in raw_json:
-            raw_json = raw_json.split("```")[1].split("```")[0].strip()
-            
-        data = json.loads(raw_json)
-        return TaskPlan(**data)
-    except (json.JSONDecodeError, ValidationError) as e:
-        # Fallback if model fails to format
-        return TaskPlan(
-            steps=[f"Failed to parse plan: {e}", "Proceed manually"],
-            affected_files=[]
-        )
+        data = json.loads(_extract_json(gen.code))
+        plan = TaskPlan(**data)
+        if not plan.steps or not plan.affected_files:
+            raise ValueError("plan must contain steps and affected_files")
+        return plan
+    except (json.JSONDecodeError, ValidationError, ValueError) as exc:
+        raise RuntimeError(f"Coding model returned an unusable plan: {exc}") from exc
