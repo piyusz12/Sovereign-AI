@@ -130,6 +130,8 @@ class HybridRetriever:
     def __init__(self):
         self.bm25 = BM25Retriever()
         self._qdrant_client = None
+        self._local_chunks: list[dict] = []
+        self._local_vectors: list[list[float]] = []
 
     async def connect_qdrant(
         self, host: str = "localhost", port: int = 6333, collection: str = "sovereign_documents"
@@ -150,10 +152,20 @@ class HybridRetriever:
         chunks: list[dict],
         collection: str = "sovereign_documents",
     ) -> bool:
-        """Upsert embedded chunks into Qdrant and BM25."""
+        """Upsert embedded chunks into Qdrant and local C++ SIMD vector index + BM25."""
+        # Index into local high-speed native C++ SIMD store
+        for chunk in chunks:
+            embedding = chunk.get("embedding")
+            if embedding:
+                self._local_chunks.append(chunk)
+                self._local_vectors.append(embedding)
+
+        # Update BM25 index with new chunks
+        self.bm25.index(self.bm25._documents + chunks)
+
         if not self._qdrant_client:
-            logger.warning("Qdrant client not connected. Skipping dense upsert.")
-            return False
+            logger.info("Qdrant client not connected. Chunks indexed in native C++ AVX2 SIMD vector store.")
+            return True
 
         try:
             from qdrant_client.models import PointStruct
@@ -162,7 +174,6 @@ class HybridRetriever:
             points = []
             for chunk in chunks:
                 point_id = str(uuid.uuid4())
-                # embedding is popped or copied so we don't store it in payload
                 embedding = chunk.get("embedding")
                 if not embedding:
                     continue
@@ -183,12 +194,9 @@ class HybridRetriever:
                 )
                 logger.info("Upserted %d chunks to Qdrant collection %s", len(points), collection)
             
-            # Update BM25 index with new chunks
-            self.bm25.index(self.bm25._documents + chunks)
-            
             return True
         except Exception as e:
-            logger.error("Failed to upsert chunks: %s", e)
+            logger.error("Failed to upsert chunks to Qdrant: %s", e)
             return False
 
     async def search_vector(
@@ -199,7 +207,7 @@ class HybridRetriever:
         department_filter: Optional[str] = None,
         collection: str = "sovereign_documents",
     ) -> list[dict]:
-        """Search dense vector index directly (Qdrant)."""
+        """Search dense vector index directly (Qdrant or Native C++ AVX2 SIMD)."""
         return await self._dense_search(
             query_embedding, top_k, user_role, department_filter, collection
         )
@@ -217,7 +225,7 @@ class HybridRetriever:
         Hybrid search: dense + sparse → reciprocal rank fusion.
         RBAC filtering applied at BOTH retrieval paths.
         """
-        # Dense retrieval from Qdrant
+        # Dense retrieval from Qdrant or native C++ AVX2 SIMD engine
         dense_results = await self.search_vector(
             query_embedding, top_k, user_role, department_filter, collection
         )
@@ -238,9 +246,35 @@ class HybridRetriever:
         department_filter: Optional[str],
         collection: str,
     ) -> list[dict]:
-        """Search Qdrant for semantically similar documents."""
+        """Search Qdrant or Native C++ AVX2 SIMD engine for semantically similar documents."""
         if not self._qdrant_client:
-            return []
+            # Native C++ AVX2 SIMD acceleration
+            if not self._local_vectors or not query_embedding:
+                return []
+            try:
+                from backend.cpp_bridge.bridge import cpp_core
+                filtered_indices = []
+                filtered_vectors = []
+                for idx, chunk in enumerate(self._local_chunks):
+                    if user_role and not self.bm25._check_access(chunk, user_role, department_filter):
+                        continue
+                    filtered_indices.append(idx)
+                    filtered_vectors.append(self._local_vectors[idx])
+
+                if not filtered_vectors:
+                    return []
+
+                top_matches = cpp_core.simd_batch_topk(query_embedding, filtered_vectors, top_k)
+                results = []
+                for sub_idx, score in top_matches:
+                    real_idx = filtered_indices[sub_idx]
+                    chunk = dict(self._local_chunks[real_idx])
+                    chunk["_dense_score"] = score
+                    results.append(chunk)
+                return results
+            except Exception as e:
+                logger.warning("Native C++ SIMD vector search error: %s", e)
+                return []
 
         try:
             from qdrant_client.models import Filter, FieldCondition, MatchValue, MatchAny
