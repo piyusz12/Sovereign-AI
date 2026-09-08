@@ -511,17 +511,37 @@ async def run_flagship_workflow(request: WorkflowRequest, current_user: dict = D
 @router.post("/execute", response_model=CodeExecutionResponse, dependencies=[Depends(require_permission("agent.execute_code"))])
 async def execute_code(request: CodeExecutionRequest):
     """
-    Execute code in a sandboxed Docker container.
-    Network = disabled, memory/CPU limited, timeout enforced.
+    Execute code in an isolated sandbox environment.
+    Network = disabled, memory/CPU limited, timeout enforced, with local fallback.
     """
-    # TODO Phase 10: Implement Docker sandbox
-    return CodeExecutionResponse(
-        stdout="",
-        stderr="Sandbox not yet implemented",
-        exit_code=-1,
-        execution_time_ms=0,
-        files_created=[],
-    )
+    import asyncio
+    from backend.tools.python_sandbox import run_python_code
+
+    start_time = time.time()
+    try:
+        result = await asyncio.to_thread(
+            run_python_code,
+            request.code,
+            timeout=request.timeout_seconds,
+        )
+        duration_ms = round((time.time() - start_time) * 1000, 2)
+        return CodeExecutionResponse(
+            stdout=result.stdout,
+            stderr=result.stderr,
+            exit_code=result.exit_code,
+            execution_time_ms=duration_ms,
+            files_created=[],
+        )
+    except Exception as e:
+        logger.error("Code execution failed: %s", e)
+        duration_ms = round((time.time() - start_time) * 1000, 2)
+        return CodeExecutionResponse(
+            stdout="",
+            stderr=str(e),
+            exit_code=-1,
+            execution_time_ms=duration_ms,
+            files_created=[],
+        )
 
 
 # ── Authentication ────────────────────────────────────────────────────────────

@@ -1,69 +1,71 @@
-```
-# Dependencies
-node_modules/
-
-# Build artifacts
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
 dist/
 build/
-*.js
-*.ts
-*.tsx
-
-# Environment
+*.egg
+.venv/
+venv/
+env/
 .env
 .env.local
-.env.*
+*.env.*
 
-# Editors
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 *.tmp
+
+# Docker
+docker-compose.override.yml
+
+# Data (keep structure, ignore content)
+data/documents/**/*.pdf
+data/documents/**/*.xlsx
+data/documents/**/*.docx
+data/documents/**/*.pptx
+data/documents/**/*.png
+data/documents/**/*.jpg
+data/processed/
+data/embeddings/
+data/output/
+!data/**/.gitkeep
+!data/**/README.md
+
+# Models (downloaded locally)
+models/**/*.bin
+models/**/*.gguf
+models/**/*.safetensors
 
 # Logs
 *.log
+logs/
 
-# Coverage
-coverage/
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Test artifacts
+.pytest_cache/
+.mypy_cache/
 htmlcov/
 .coverage
+coverage.xml
 
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-env/
-venv/
-.venv/
-pip-log.txt
-pip-delete-this-directory.txt
-.tox/
-.coverage
-.nyc_output
-istanbul
-.mypy_cache/
-.pytest_cache/
-.hypothesis/
-
-# Node
+# Node (frontend)
+node_modules/
+.next/
+out/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-node_modules/
-jspm_packages/
-typings/
-.nyc_output
-coverage/
-*.lcov
 
-# Vite specific
-!.vite/
-vite.config.ts
-
-# Lock files
-package-lock.json
-yarn.lock
-```
+# Monitoring captures
+monitoring/captures/

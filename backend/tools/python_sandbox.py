@@ -104,44 +104,69 @@ def run_python_code(code: str, *, timeout: int = MAX_RUNTIME_SECONDS, input_file
 
     container_name = f"sovereign-sandbox-{run_id}"
 
-    if docker_ready:
-        cmd = [
-            "docker", "run",
-            "--rm",
-            "--name", container_name,
-            "--network", "none",
-            "--memory", MAX_MEMORY,
-            "--cpus", MAX_CPUS,
-            "--pids-limit", "64",
-            "--read-only",
-            "--tmpfs", "/tmp:rw,size=64m",
-            "-v", f"{scratch_dir}:/workspace:rw",
-            "-w", "/workspace",
-            "--user", "nobody",
-            SANDBOX_IMAGE,
-            "python", "/workspace/main.py",
-        ]
-    else:
-        # Fallback to local python for demonstration purposes if docker isn't running
-        cmd = [sys.executable, str(script_path)]
-
     timed_out = False
+    enclave = None
+
     try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            cwd=str(scratch_dir) if not docker_ready else None,
-        )
-        stdout, stderr, exit_code = proc.stdout, proc.stderr, proc.returncode
+        if docker_ready:
+            cmd = [
+                "docker", "run",
+                "--rm",
+                "--name", container_name,
+                "--network", "none",
+                "--memory", MAX_MEMORY,
+                "--cpus", MAX_CPUS,
+                "--pids-limit", "64",
+                "--read-only",
+                "--tmpfs", "/tmp:rw,size=64m",
+                "-v", f"{scratch_dir}:/workspace:rw",
+                "-w", "/workspace",
+                "--user", "nobody",
+                SANDBOX_IMAGE,
+                "python", "/workspace/main.py",
+            ]
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+            stdout, stderr, exit_code = proc.stdout, proc.stderr, proc.returncode
+        else:
+            # Native C++ Win32 Job Object hardware-enforced memory and CPU containment
+            from backend.cpp_bridge.bridge import cpp_core
+            enclave = cpp_core.create_sandbox_enclave(max_memory_mb=512, max_processes=8, cpu_rate_percent=85)
+            cmd = [sys.executable, str(script_path)]
+
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                cwd=str(scratch_dir),
+            )
+            if enclave:
+                enclave.assign_process(proc.pid)
+
+            stdout, stderr = proc.communicate(timeout=timeout)
+            exit_code = proc.returncode
+
+            if enclave:
+                stats = enclave.get_stats()
+                if stats.get("peak_memory_mb", 0) > 0:
+                    enclave_notice = f"[C++ Win32 Enclave] Peak RAM: {stats['peak_memory_mb']} MB | CPU: {round(stats['cpu_time_us']/1000, 2)} ms"
+                    stderr = (stderr + "\n" + enclave_notice).strip() if stderr else enclave_notice
+
     except subprocess.TimeoutExpired as exc:
         timed_out = True
-        # Container has --rm, but if the process hung, force-kill it so it
-        # doesn't linger consuming resources.
-        subprocess.run(["docker", "kill", container_name], capture_output=True)
-        stdout, stderr, exit_code = (exc.stdout or ""), (exc.stderr or "execution timed out"), -1
+        if docker_ready:
+            subprocess.run(["docker", "kill", container_name], capture_output=True)
+        elif enclave:
+            enclave.terminate(1)
+        stdout, stderr, exit_code = (getattr(exc, "stdout", "") or ""), "Execution timed out (terminated by sandbox)", -1
     finally:
+        if enclave:
+            enclave.close()
         shutil.rmtree(scratch_dir, ignore_errors=True)
 
     return SandboxResult(
