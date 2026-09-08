@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 """
-Sovereign AI Workbench — C++ Fast Core Bridge (ctypes)
+Sovereign AI Workbench - C++ Fast Core Bridge (ctypes)
 
 Connects Python orchestration to the compiled 64-bit C++ sovereign_core.dll for:
 1. Hardware Control: Microsecond DXGI GPU VRAM & system memory queries
@@ -11,6 +12,7 @@ Connects Python orchestration to the compiled 64-bit C++ sovereign_core.dll for:
 
 from __future__ import annotations
 
+import array
 import ctypes
 import logging
 import math
@@ -40,7 +42,7 @@ POLICY_NAMES = [
 class NativeSandboxEnclave:
     """Wrapper around a native Win32 Job Object sandbox handle."""
 
-    def __init__(self, core: CppCore, handle: Any, max_memory_bytes: int):
+    def __init__(self, core: "CppCore", handle: Any, max_memory_bytes: int):
         self._core = core
         self._handle = handle
         self._max_memory_bytes = max_memory_bytes
@@ -389,7 +391,6 @@ class CppCore:
         top_k = min(top_k, num_vectors)
 
         if self._available and self._dll:
-            import array
             flat_matrix = [val for vec in matrix for val in vec]
             q_arr = array.array('f', query)
             m_arr = array.array('f', flat_matrix)
