@@ -1,40 +1,41 @@
 from typing import Dict, List, Optional
 from backend.models.schemas import ModelInfo, ModelCapability, ModelStatus
+from backend.settings import settings
 
 # A static registry of available open-weight models
 # In a real enterprise system, this could be backed by a database.
 _MODELS_DB: Dict[str, ModelInfo] = {
     "reasoning-local": ModelInfo(
         id="reasoning-local",
-        name="qwen3:14b",
+        name=settings.ollama_reasoning_model,
         role="reasoning",
         capabilities=[ModelCapability.TEXT],
         context_length=8192,
         quantization="4-bit",
-        vram_estimate_mb=7000,
+        vram_estimate_mb=5200,
         status=ModelStatus.READY,
         loaded=False,
     ),
     "coding-local": ModelInfo(
         id="coding-local",
-        name="qwen2.5-coder:7b",
+        name=settings.ollama_coding_model,
         role="coding",
         capabilities=[ModelCapability.TEXT, ModelCapability.CODE],
         context_length=8192,
         quantization="4-bit",
-        vram_estimate_mb=4200,
+        vram_estimate_mb=4700,
         status=ModelStatus.READY,
         loaded=False,
         backend="ollama"
     ),
     "vision-local": ModelInfo(
         id="vision-local",
-        name="qwen3-vl:8b",
+        name=settings.ollama_vision_model,
         role="vision",
         capabilities=[ModelCapability.TEXT, ModelCapability.VISION],
         context_length=4096,
         quantization="4-bit",
-        vram_estimate_mb=6800,
+        vram_estimate_mb=7800,
         status=ModelStatus.READY,
         loaded=False
     ),

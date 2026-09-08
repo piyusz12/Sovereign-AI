@@ -7,7 +7,7 @@ async def main():
     base_port = os.getenv("APP_PORT", "8080")
     base_url = f"http://127.0.0.1:{base_port}/api/v1"
     
-    async with AsyncClient(base_url=base_url) as client:
+    async with AsyncClient(base_url=base_url, timeout=60.0) as client:
         # 1. Login as finance_user
         print("[*] Logging in as finance_user...")
         login_resp = await client.post("/auth/login", json={"username": "finance_user", "password": "fin123"})
