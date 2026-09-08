@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Server, Activity, ShieldCheck, Database, Cpu } from 'lucide-react';
+import { Server, Activity, Database, Cpu } from 'lucide-react';
 
 interface ModelInfo {
   id: string;
