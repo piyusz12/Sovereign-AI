@@ -213,28 +213,35 @@ export function MissionRail() {
 
         {/* WORK */}
         <div>
-          <h3 className="font-label mb-2 px-1">WORK</h3>
-          <div className="space-y-0.5">
+          <h3 className="font-label mb-2 px-1 text-slate-400">WORK SPECIALIZATIONS</h3>
+          <div className="space-y-1">
             {[
-              { icon: FileText, label: 'Documents' },
-              { icon: Wrench, label: 'Engineering' },
-              { icon: Code, label: 'Coding' },
-              { icon: ClipboardCheck, label: 'Approvals' },
-              { icon: BarChart3, label: 'Analysis' },
-            ].map(({ icon: Icon, label }) => (
+              { icon: FileText, label: 'Documents', type: 'document', task: 'Document Reasoning', model: 'Qwen3-14B' },
+              { icon: Wrench, label: 'Engineering', type: 'document', task: 'Engineering Audit', model: 'Qwen3-14B' },
+              { icon: Code, label: 'Coding', type: 'coding', task: 'Code Generation', model: 'Qwen2.5-Coder-7B' },
+              { icon: ClipboardCheck, label: 'Approvals', type: 'general', task: 'Zero-Egress Verification', model: 'Qwen3-14B' },
+              { icon: BarChart3, label: 'Analysis', type: 'analysis', task: 'Data Analysis', model: 'Qwen3-14B' },
+            ].map(({ icon: Icon, label, task, model }) => (
               <button
                 key={label}
-                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition-colors group"
-                style={{ color: 'var(--color-text-secondary)' }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = 'var(--color-deck-surface)';
+                type="button"
+                onClick={() => {
+                  useAppStore.getState().updateRouting({
+                    task_type: task,
+                    selected_model: model,
+                    reason: `Filter activated for ${label} workspace`,
+                  });
+                  setActiveView('command');
                 }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                }}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-all group text-slate-300 hover:bg-slate-800/80 hover:text-cyan-300 cursor-pointer"
               >
-                <Icon className="w-3.5 h-3.5" style={{ color: 'var(--color-text-muted)' }} />
-                {label}
+                <div className="flex items-center gap-2.5">
+                  <Icon className="w-3.5 h-3.5 text-slate-400 group-hover:text-cyan-400 transition-colors" />
+                  <span>{label}</span>
+                </div>
+                <span className="text-[9px] font-mono text-slate-500 group-hover:text-cyan-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                  ROUTE
+                </span>
               </button>
             ))}
           </div>
@@ -242,27 +249,30 @@ export function MissionRail() {
 
         {/* KNOWLEDGE */}
         <div>
-          <h3 className="font-label mb-2 px-1">KNOWLEDGE</h3>
-          <div className="space-y-0.5">
+          <h3 className="font-label mb-2 px-1 text-slate-400">KNOWLEDGE REPOSITORY</h3>
+          <div className="space-y-1">
             {[
-              { icon: BookOpen, label: 'SOPs' },
-              { icon: FileStack, label: 'Manuals' },
-              { icon: FileText, label: 'Reports' },
-              { icon: FolderKanban, label: 'Projects' },
-            ].map(({ icon: Icon, label }) => (
+              { icon: BookOpen, label: 'SOPs & Standards', count: '48' },
+              { icon: FileStack, label: 'Technical Manuals', count: '32' },
+              { icon: FileText, label: 'Audit Reports', count: '29' },
+              { icon: FolderKanban, label: 'Plant Schematics', count: '19' },
+            ].map(({ icon: Icon, label, count }) => (
               <button
                 key={label}
-                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition-colors"
-                style={{ color: 'var(--color-text-secondary)' }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = 'var(--color-deck-surface)';
+                type="button"
+                onClick={() => {
+                  setActiveView('trust');
                 }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                }}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-all text-slate-300 hover:bg-slate-800/80 hover:text-amber-300 cursor-pointer group"
+                title={`Open ${label} in Trust Center`}
               >
-                <Icon className="w-3.5 h-3.5" style={{ color: 'var(--color-text-muted)' }} />
-                {label}
+                <div className="flex items-center gap-2.5">
+                  <Icon className="w-3.5 h-3.5 text-slate-400 group-hover:text-amber-400 transition-colors" />
+                  <span>{label}</span>
+                </div>
+                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 group-hover:text-amber-300 border border-white/5">
+                  {count}
+                </span>
               </button>
             ))}
           </div>

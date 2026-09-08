@@ -72,7 +72,7 @@ export function PipelineNode({ step, isLast }: PipelineNodeProps) {
           border: `1px solid ${config.border}`,
           boxShadow: config.glow || undefined,
         }}
-        onClick={() => step.metrics && setExpanded(!expanded)}
+        onClick={() => setExpanded(!expanded)}
       >
         <div className="px-4 py-3">
           {/* Header */}
@@ -88,7 +88,7 @@ export function PipelineNode({ step, isLast }: PipelineNodeProps) {
               {/* Name */}
               <div>
                 <span
-                  className="font-instrument-lg block"
+                  className="font-instrument-lg block group-hover:text-cyan-300 transition-colors"
                   style={{ color: step.status === 'queued' ? 'var(--color-text-muted)' : 'var(--color-text-primary)' }}
                 >
                   {step.name}
@@ -102,54 +102,86 @@ export function PipelineNode({ step, isLast }: PipelineNodeProps) {
             {/* Right side */}
             <div className="flex items-center gap-2">
               {step.duration_ms && (
-                <span className="font-instrument" style={{ color: 'var(--color-text-secondary)' }}>
+                <span className="font-instrument px-1.5 py-0.5 rounded bg-black/30 border border-white/5" style={{ color: 'var(--color-text-secondary)' }}>
                   {step.duration_ms}ms
                 </span>
               )}
               <span
-                className="text-[9px] font-bold tracking-widest px-1.5 py-0.5 rounded"
+                className="text-[9px] font-bold tracking-widest px-2 py-0.5 rounded-full border"
                 style={{
                   color: config.color,
                   backgroundColor: step.status !== 'queued' ? config.bg : 'transparent',
+                  borderColor: config.border,
                 }}
               >
                 {config.label}
               </span>
-              {step.metrics && (
-                expanded
-                  ? <ChevronUp className="w-3 h-3" style={{ color: 'var(--color-text-muted)' }} />
-                  : <ChevronDown className="w-3 h-3" style={{ color: 'var(--color-text-muted)' }} />
-              )}
+              <button
+                type="button"
+                className="p-1 rounded hover:bg-white/5 transition-colors"
+                aria-label={expanded ? 'Collapse step' : 'Expand step'}
+              >
+                {expanded ? (
+                  <ChevronUp className="w-3.5 h-3.5 text-cyan-400" />
+                ) : (
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                )}
+              </button>
             </div>
           </div>
 
           {/* Running progress bar */}
           {isRunning && (
-            <div className="mt-2.5 h-1 w-full rounded-full overflow-hidden" style={{ backgroundColor: 'var(--color-deck-elevated)' }}>
+            <div className="mt-2.5 h-1.5 w-full rounded-full overflow-hidden bg-slate-950/80 border border-amber-500/20">
               <div
                 className="h-full rounded-full progress-striped"
                 style={{
-                  width: '70%',
+                  width: '85%',
                   backgroundColor: 'var(--color-running)',
                   transition: 'width 1s ease',
+                  boxShadow: '0 0 10px rgba(245, 158, 11, 0.5)',
                 }}
               />
             </div>
           )}
 
-          {/* Expanded metrics */}
-          {expanded && step.metrics && (
-            <div className="mt-3 pt-2 border-t space-y-1" style={{ borderColor: 'var(--color-deck-border)' }}>
-              {Object.entries(step.metrics).map(([key, value]) => (
-                <div key={key} className="flex items-center justify-between">
-                  <span className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
-                    {key.replace(/_/g, ' ')}
-                  </span>
-                  <span className="font-instrument" style={{ color: 'var(--color-text-primary)' }}>
-                    {String(value)}
-                  </span>
+          {/* Expanded details & metrics */}
+          {expanded && (
+            <div className="mt-3 pt-2.5 border-t border-white/10 space-y-2 animate-fade-in text-xs">
+              <div className="flex items-center justify-between text-[11px] text-slate-400">
+                <span>STAGE LOGS & METRICS</span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigator.clipboard?.writeText(
+                      JSON.stringify({ step: step.name, status: step.status, metrics: step.metrics, duration: step.duration_ms }, null, 2)
+                    );
+                  }}
+                  className="px-2 py-0.5 rounded text-[10px] font-mono bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 transition-all active:scale-95"
+                  title="Copy step telemetry"
+                >
+                  COPY JSON
+                </button>
+              </div>
+
+              {step.metrics && Object.keys(step.metrics).length > 0 ? (
+                <div className="space-y-1 bg-black/40 p-2 rounded border border-white/5">
+                  {Object.entries(step.metrics).map(([key, value]) => (
+                    <div key={key} className="flex items-center justify-between">
+                      <span className="text-[10px] uppercase tracking-wider text-slate-400">
+                        {key.replace(/_/g, ' ')}
+                      </span>
+                      <span className="font-instrument text-cyan-200">
+                        {String(value)}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              ) : (
+                <div className="text-[11px] text-slate-500 italic bg-black/20 p-2 rounded">
+                  {step.status === 'queued' ? 'Awaiting execution slot...' : 'Step completed cleanly with zero telemetry warnings.'}
+                </div>
+              )}
             </div>
           )}
         </div>

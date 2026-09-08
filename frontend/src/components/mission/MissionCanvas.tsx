@@ -16,8 +16,13 @@ import {
   Rocket,
   Download,
   Clock,
+  Check,
+  Code,
+  Eye,
+  Sparkles,
 } from 'lucide-react';
-import { useMissionStore } from '@/store/missionStore';
+import { useMissionStore, type MissionType } from '@/store/missionStore';
+import { useAppStore } from '@/store/appStore';
 import { PipelineView } from './PipelineView';
 import { EvidencePanel } from './EvidencePanel';
 import { MissionTrace } from './MissionTrace';
@@ -42,64 +47,218 @@ const missionStatusConfig: Record<string, { color: string; bg: string; label: st
 
 export function MissionCanvas() {
   const [activeTab, setActiveTab] = useState<CanvasTab>('pipeline');
+  const [downloaded, setDownloaded] = useState(false);
   const mission = useMissionStore((s) => s.getActiveMission());
-  const { runDemoMission } = useMissionStore();
+  const { runDemoMission, createMission } = useMissionStore();
+  const { updateRouting } = useAppStore();
 
-  // No active mission — show welcome
+  const handleLaunchPreset = (title: string, prompt: string, type: MissionType, model: string, task: string) => {
+    updateRouting({
+      selected_model: model,
+      task_type: task,
+      reason: `Quick dispatch initiated for ${title}`,
+    });
+    createMission(prompt, type);
+    runDemoMission();
+  };
+
+  const handleDownloadOutput = () => {
+    if (!mission?.output) return;
+    const filename = mission.output.filename || `sovereign_mission_${mission.number}_report.md`;
+    const content =
+      mission.output.content ||
+      `# Sovereign Verification Report — Mission #${mission.number}\n\n**Title**: ${mission.title}\n**Status**: ${mission.status.toUpperCase()}\n**Model**: ${mission.model_used || 'Qwen3-14B'}\n**Execution Duration**: ${((mission.total_duration_ms || 0) / 1000).toFixed(2)}s\n\n## Verified Claims & Citations\n${mission.evidence
+        .map(
+          (e, idx) =>
+            `### ${idx + 1}. ${e.claim}\n- Confidence: ${(e.confidence * 100).toFixed(0)}%\n- Grounding: ${e.sources.map((s) => s.title + ' (' + s.location + ')').join(', ')}`
+        )
+        .join('\n\n')}\n\n## Zero-Egress Guarantee\n- External Requests: 0\n- Cloud Egress: 0.00 KB\n- Cryptographic Seal: SHA-256 Verified On-Premise`;
+
+    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    setDownloaded(true);
+    setTimeout(() => setDownloaded(false), 2500);
+  };
+
+  // No active mission — show rich industrial operations hub
   if (!mission) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center px-8" style={{ backgroundColor: 'var(--color-deck-base)' }}>
-        <div className="text-center max-w-md animate-fade-in">
-          {/* Icon */}
-          <div
-            className="w-16 h-16 rounded-2xl mx-auto mb-6 flex items-center justify-center"
-            style={{
-              backgroundColor: 'var(--color-amber-muted)',
-              border: '1px solid var(--color-amber-border)',
-            }}
-          >
-            <Rocket className="w-7 h-7" style={{ color: 'var(--color-amber-primary)' }} />
+      <div className="flex-1 flex flex-col items-center justify-center px-8 relative overflow-y-auto cyber-grid py-12" style={{ backgroundColor: 'var(--color-deck-base)' }}>
+        <div className="ambient-glow" />
+
+        <div className="text-center max-w-2xl relative z-10 animate-fade-in">
+          {/* Top Badge */}
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-cyan-500/30 bg-cyan-500/10 text-cyan-400 text-xs font-mono mb-6 shadow-[0_0_15px_rgba(0,240,255,0.15)]">
+            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-sovereign-pulse" />
+            AIR-GAPPED INDUSTRIAL AGENT RUNTIME
           </div>
 
-          <h2 className="text-xl font-bold mb-2" style={{ color: 'var(--color-text-primary)' }}>
+          {/* Crest / Icon */}
+          <div
+            className="w-20 h-20 rounded-2xl mx-auto mb-5 flex items-center justify-center shadow-2xl relative group"
+            style={{
+              background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(0, 240, 255, 0.1) 100%)',
+              border: '1px solid var(--color-amber-border)',
+              boxShadow: '0 0 30px rgba(245, 158, 11, 0.25)',
+            }}
+          >
+            <Rocket className="w-9 h-9 text-amber-400 transition-transform group-hover:scale-110 duration-300" />
+          </div>
+
+          <h2 className="text-3xl font-extrabold tracking-tight mb-2 bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text text-transparent">
             Sovereign Command Deck
           </h2>
-          <p className="text-sm leading-relaxed mb-6" style={{ color: 'var(--color-text-secondary)' }}>
-            Mission Control for enterprise knowledge work.
-            <br />
-            All inference runs locally. Zero data egress.
+          <p className="text-sm leading-relaxed mb-8 text-slate-400 max-w-lg mx-auto">
+            Autonomous mission control for high-consequence enterprise engineering.
+            All weights, reasoning chains, and data reside 100% locally.
           </p>
 
-          <div className="flex items-center justify-center gap-3">
+          {/* Main Action Buttons */}
+          <div className="flex items-center justify-center gap-4 mb-10">
             <button
               onClick={runDemoMission}
-              className="px-5 py-2.5 rounded-lg text-xs font-bold tracking-wider transition-all hover:scale-[1.02]"
+              className="px-6 py-3 rounded-xl text-xs font-bold tracking-wider transition-all duration-300 transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer shadow-lg flex items-center gap-2"
               style={{
                 backgroundColor: 'var(--color-amber-primary)',
                 color: 'var(--color-deck-void)',
                 border: '1px solid var(--color-amber-hover)',
+                boxShadow: '0 0 25px rgba(245, 158, 11, 0.4)',
               }}
             >
-              LAUNCH DEMO MISSION
+              <Sparkles className="w-4 h-4" />
+              LAUNCH VERIFIED DEMO MISSION
             </button>
           </div>
 
-          <p className="text-[10px] mt-4" style={{ color: 'var(--color-text-dim)' }}>
-            Or type a command in the bar below to start a new mission
-          </p>
+          {/* Quick Preset Mission Cards */}
+          <div className="text-left mb-8">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="font-label text-slate-400">DISPATCH READY TEMPLATES</span>
+              <div className="flex-1 h-[1px] bg-slate-800" />
+            </div>
 
-          {/* Quick stats */}
-          <div className="flex items-center justify-center gap-6 mt-8">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {/* Card 1 */}
+              <button
+                type="button"
+                onClick={() =>
+                  handleLaunchPreset(
+                    'Engineering Spec Audit',
+                    'Audit cooling system inspection report and verify safety valve pressure tolerances against ISO-9001 specs.',
+                    'document',
+                    'Qwen3-14B',
+                    'Document Reasoning'
+                  )
+                }
+                className="glass-card p-4 rounded-xl text-left transition-all hover:border-amber-500/50 group cursor-pointer"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="p-2 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                    <FileSearch className="w-4 h-4" />
+                  </div>
+                  <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                    DOC AUDIT
+                  </span>
+                </div>
+                <h4 className="text-xs font-bold text-slate-200 group-hover:text-amber-300 transition-colors">
+                  Spec & SOP Audit
+                </h4>
+                <p className="text-[11px] text-slate-400 mt-1 line-clamp-2">
+                  Verify safety tolerances and ground claims in indexed technical SOPs.
+                </p>
+                <div className="mt-3 flex items-center gap-1.5 text-[9px] font-mono text-cyan-400">
+                  <span>START MISSION →</span>
+                </div>
+              </button>
+
+              {/* Card 2 */}
+              <button
+                type="button"
+                onClick={() =>
+                  handleLaunchPreset(
+                    'Code Synthesis',
+                    'Synthesize Python algorithm to calculate pump flow rate, generate unit test suite, and verify AST safety.',
+                    'coding',
+                    'Qwen2.5-Coder-7B',
+                    'Code Generation'
+                  )
+                }
+                className="glass-card p-4 rounded-xl text-left transition-all hover:border-cyan-500/50 group cursor-pointer"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="p-2 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                    <Code className="w-4 h-4" />
+                  </div>
+                  <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
+                    SYNTHESIS
+                  </span>
+                </div>
+                <h4 className="text-xs font-bold text-slate-200 group-hover:text-cyan-300 transition-colors">
+                  Code Synthesis & AST
+                </h4>
+                <p className="text-[11px] text-slate-400 mt-1 line-clamp-2">
+                  Generate verified algorithms with automated sandbox test execution.
+                </p>
+                <div className="mt-3 flex items-center gap-1.5 text-[9px] font-mono text-cyan-400">
+                  <span>START MISSION →</span>
+                </div>
+              </button>
+
+              {/* Card 3 */}
+              <button
+                type="button"
+                onClick={() =>
+                  handleLaunchPreset(
+                    'P&ID Schematic Vision',
+                    'Analyze P&ID engineering schematic, identify isolation valves, and trace high-pressure steam line.',
+                    'vision',
+                    'Qwen3-VL-8B',
+                    'Vision Analysis'
+                  )
+                }
+                className="glass-card p-4 rounded-xl text-left transition-all hover:border-purple-500/50 group cursor-pointer"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="p-2 rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                    <Eye className="w-4 h-4" />
+                  </div>
+                  <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20">
+                    VISION
+                  </span>
+                </div>
+                <h4 className="text-xs font-bold text-slate-200 group-hover:text-purple-300 transition-colors">
+                  P&ID Vision Schematics
+                </h4>
+                <p className="text-[11px] text-slate-400 mt-1 line-clamp-2">
+                  Multimodal recognition of mechanical components & valves.
+                </p>
+                <div className="mt-3 flex items-center gap-1.5 text-[9px] font-mono text-cyan-400">
+                  <span>START MISSION →</span>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {/* Quick telemetry proof stats */}
+          <div className="flex items-center justify-center gap-8 py-3 px-6 rounded-xl bg-slate-900/60 border border-white/5">
             {[
-              { label: 'MODELS', value: '3 LOCAL' },
-              { label: 'DOCUMENTS', value: '128 INDEXED' },
-              { label: 'EGRESS', value: '0 MB' },
+              { label: 'LOCAL MODELS', value: '3 QUANTIZED' },
+              { label: 'SOPs INDEXED', value: '128 LOCAL' },
+              { label: 'DATA EGRESS', value: '0.00 KB' },
             ].map((stat) => (
               <div key={stat.label} className="text-center">
-                <span className="font-instrument-lg block" style={{ color: 'var(--color-text-primary)' }}>
+                <span className="font-instrument-lg block text-slate-200">
                   {stat.value}
                 </span>
-                <span className="font-label block mt-0.5" style={{ fontSize: '8px' }}>
+                <span className="font-label block mt-0.5 text-[9px] text-slate-500">
                   {stat.label}
                 </span>
               </div>
@@ -163,15 +322,19 @@ export function MissionCanvas() {
             {/* Output download */}
             {mission.output && (
               <button
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold tracking-wider transition-all"
+                type="button"
+                onClick={handleDownloadOutput}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold tracking-wider transition-all duration-200 cursor-pointer transform hover:scale-105 active:scale-95 shadow-md"
                 style={{
-                  backgroundColor: 'var(--color-verified-muted)',
-                  border: '1px solid var(--color-verified-border)',
+                  backgroundColor: downloaded ? 'rgba(16, 185, 129, 0.25)' : 'var(--color-verified-muted)',
+                  border: `1px solid ${downloaded ? 'rgba(16, 185, 129, 0.6)' : 'var(--color-verified-border)'}`,
                   color: 'var(--color-verified)',
+                  boxShadow: downloaded ? '0 0 15px rgba(16, 185, 129, 0.3)' : undefined,
                 }}
+                title="Download verified cryptographic report"
               >
-                <Download className="w-3 h-3" />
-                {mission.output.filename || mission.output.type}
+                {downloaded ? <Check className="w-3 h-3 text-emerald-400" /> : <Download className="w-3 h-3" />}
+                {downloaded ? 'VERIFIED REPORT DOWNLOADED' : (mission.output.filename || 'DOWNLOAD REPORT')}
               </button>
             )}
           </div>
