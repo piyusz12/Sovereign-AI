@@ -43,11 +43,13 @@ async def run_coding_workflow(trace: WorkflowTrace, user_role: str, inputs: dict
     
     prompt = query
     input_files = None
-    if file_path:
+    if file_path and Path(file_path).exists():
         # Pass the file to the sandbox mapped to its basename
         file_name = Path(file_path).name
         input_files = {file_name: file_path}
         prompt += f"\n\nThe data file '{file_name}' is available in your current directory. Write a complete Python script to read it, analyze the data (calculating anomalies if asked), and print the final results as JSON to stdout. Ensure you handle potential KeyError or missing columns, or let the error surface so you can fix it in the next attempt."
+    elif file_path:
+        prompt += f"\n\nWrite a complete Python script for the following task: {query}. Print the final results as JSON to stdout."
     
     # 1. Code Generation & Sandbox Repair Loop
     trace.add_step("Code Generation & Sandbox Execution", status="pending")

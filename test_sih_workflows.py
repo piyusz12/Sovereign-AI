@@ -2,7 +2,9 @@ import asyncio
 import httpx
 from pathlib import Path
 
-API_URL = "http://127.0.0.1:8000/api/v1/workflows/run"
+import os
+BASE_PORT = os.getenv("APP_PORT", "8080")
+API_URL = f"http://127.0.0.1:{BASE_PORT}/api/v1/workflows/run"
 
 async def test_workflows():
     # Make a dummy PDF for the vision router to see
@@ -12,7 +14,7 @@ async def test_workflows():
     # We will just test if the endpoint runs (it might fail internal steps, but the orchestrator should work)
     print("Logging in...")
     async with httpx.AsyncClient() as client:
-        res = await client.post("http://127.0.0.1:8000/api/v1/auth/login", data={"username": "admin", "password": "password"})
+        res = await client.post(f"http://127.0.0.1:{BASE_PORT}/api/v1/auth/login", json={"username": "admin", "password": "admin123"})
         token = res.json()["access_token"]
 
     print("Testing Inspection Workflow...")

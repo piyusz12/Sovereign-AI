@@ -3,12 +3,13 @@ import httpx
 import os
 from pathlib import Path
 
-API_URL = "http://127.0.0.1:8000/api/v1/workflows/run"
+BASE_PORT = os.getenv("APP_PORT", "8080")
+API_URL = f"http://127.0.0.1:{BASE_PORT}/api/v1/workflows/run"
 
 async def test_coding_workflow():
     print("[*] Logging in as admin...")
     async with httpx.AsyncClient() as client:
-        res = await client.post("http://127.0.0.1:8000/api/v1/auth/login", json={"username": "admin", "password": "admin123"})
+        res = await client.post(f"http://127.0.0.1:{BASE_PORT}/api/v1/auth/login", json={"username": "admin", "password": "admin123"})
         if res.status_code != 200:
             print(f"Login failed: {res.text}")
             return

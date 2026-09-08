@@ -136,15 +136,19 @@ async def _execute_vision_async(query: str, context: str = "") -> ToolExecution:
     except SecurityException as e:
         return ToolExecution("vision", False, "", f"SECURITY DENY: {e}")
     
-    # Extract file path from query, prioritizing quotes to handle spaces
-    quoted_match = re.search(r'["\']([a-zA-Z]:\\[^"\']+|/[^"\']+)["\']', query)
-    if quoted_match:
-        path_str = quoted_match.group(1)
+    path_str = None
+    if context and Path(context.strip(".,'\"")).exists():
+        path_str = context.strip(".,'\"")
     else:
-        path_match = re.search(r'([a-zA-Z]:\\[^\s]+|/[^\s]+)', query)
-        if not path_match:
-            return ToolExecution("vision", False, "", "Could not find a valid file path in the request.")
-        path_str = path_match.group(1)
+        # Extract file path from query, prioritizing quotes to handle spaces
+        quoted_match = re.search(r'["\']([a-zA-Z]:\\[^"\']+|/[^"\']+|[^"\']+\.[a-zA-Z0-9]+)["\']', query)
+        if quoted_match:
+            path_str = quoted_match.group(1)
+        else:
+            path_match = re.search(r'([a-zA-Z]:\\[^\s]+|/[^\s]+|[a-zA-Z0-9_\-./\\]+\.[a-zA-Z0-9]+)', query)
+            if not path_match:
+                return ToolExecution("vision", False, "", "Could not find a valid file path in the request.")
+            path_str = path_match.group(1)
         
     image_path = Path(path_str.strip(".,'\""))
     

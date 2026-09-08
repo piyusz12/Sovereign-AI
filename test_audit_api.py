@@ -1,8 +1,10 @@
 import asyncio
 import httpx
 
-API_URL = "http://127.0.0.1:8000/api/v1/audit/events"
-LOGIN_URL = "http://127.0.0.1:8000/api/v1/auth/login"
+import os
+BASE_PORT = os.getenv("APP_PORT", "8080")
+API_URL = f"http://127.0.0.1:{BASE_PORT}/api/v1/audit/events"
+LOGIN_URL = f"http://127.0.0.1:{BASE_PORT}/api/v1/auth/login"
 
 async def test_audit_endpoints():
     print("[*] Logging in as admin to test audit...")
@@ -35,7 +37,7 @@ async def test_audit_endpoints():
                 trace_id = events[0].get("trace_id")
                 if trace_id:
                     print(f"\n[*] Fetching Workflow Trace {trace_id}...")
-                    res_trace = await client.get(f"http://127.0.0.1:8000/api/v1/audit/workflows/{trace_id}", headers=headers)
+                    res_trace = await client.get(f"http://127.0.0.1:{BASE_PORT}/api/v1/audit/workflows/{trace_id}", headers=headers)
                     print(f"Status: {res_trace.status_code}")
                     if res_trace.status_code == 200:
                         trace_data = res_trace.json()

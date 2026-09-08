@@ -3,7 +3,8 @@ from httpx import AsyncClient
 import os
 
 async def main():
-    base_url = "http://127.0.0.1:8000/api/v1"
+    base_port = os.getenv("APP_PORT", "8080")
+    base_url = f"http://127.0.0.1:{base_port}/api/v1"
     
     # We will test docx, xlsx, pptx locally since we have a direct dependency
     # on the generator files.

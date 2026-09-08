@@ -15,7 +15,7 @@ import time
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, Depends, Request
+from fastapi import APIRouter, File, HTTPException, UploadFile, Depends, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 

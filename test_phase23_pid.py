@@ -2,8 +2,10 @@ import asyncio
 import httpx
 from pathlib import Path
 
-API_URL = "http://127.0.0.1:8000/api/v1/workflows/run"
-LOGIN_URL = "http://127.0.0.1:8000/api/v1/auth/login"
+import os
+BASE_PORT = os.getenv("APP_PORT", "8080")
+API_URL = f"http://127.0.0.1:{BASE_PORT}/api/v1/workflows/run"
+LOGIN_URL = f"http://127.0.0.1:{BASE_PORT}/api/v1/auth/login"
 
 async def test_pid_workflow():
     print("[*] Logging in as admin...")

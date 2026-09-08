@@ -21,7 +21,7 @@ export function ModelStatus() {
     // but we use polling for this phase demo.
     const fetchStatus = async () => {
       try {
-        const res = await fetch('http://localhost:8000/api/v1/models/status');
+        const res = await fetch('http://localhost:8080/api/v1/models/status');
         const data = await res.json();
         setModels(data.models);
         setVram({ used: data.vram_used_mb, max: data.max_vram_mb, status: data.vram_status || 'GREEN' });

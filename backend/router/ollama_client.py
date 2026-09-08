@@ -408,6 +408,35 @@ class OllamaClient:
                     "Start with 'ollama serve' or check Docker."
                 )
             except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404:
+                    try:
+                        available = await self.list_models()
+                        names = [m.name for m in available]
+                        prefix = model.lower().split(':')[0]
+                        matched = next((n for n in names if n.lower() == model.lower() or n.lower().startswith(prefix)), None)
+                        if not matched and ("vl" in model.lower() or "vision" in model.lower()):
+                            matched = next((n for n in names if "vision" in n.lower() or "vl" in n.lower()), None)
+                        if matched and matched != model:
+                            logger.info("Model '%s' not found in Ollama, resolving to installed '%s'", model, matched)
+                            payload["model"] = matched
+                            resp2 = await client.post("/api/chat", json=payload)
+                            resp2.raise_for_status()
+                            data2 = resp2.json()
+                            msg2 = data2.get("message", {})
+                            return ChatResponse(
+                                content=msg2.get("content", ""),
+                                model=data2.get("model", matched),
+                                total_duration_ns=data2.get("total_duration", 0),
+                                load_duration_ns=data2.get("load_duration", 0),
+                                prompt_eval_count=data2.get("prompt_eval_count", 0),
+                                prompt_eval_duration_ns=data2.get("prompt_eval_duration", 0),
+                                eval_count=data2.get("eval_count", 0),
+                                eval_duration_ns=data2.get("eval_duration", 0),
+                                done=data2.get("done", True),
+                                done_reason=data2.get("done_reason", ""),
+                            )
+                    except Exception as fallback_err:
+                        logger.debug("Automatic model fallback failed: %s", fallback_err)
                 logger.error("Ollama HTTP error: %s", e)
                 raise
             except Exception as e:
