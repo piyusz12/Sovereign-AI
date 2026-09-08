@@ -1,0 +1,5 @@
+CompileFlags:
+  Add:
+    - -Icpp-core/include
+    - -Iinclude
+    - -std=c++20

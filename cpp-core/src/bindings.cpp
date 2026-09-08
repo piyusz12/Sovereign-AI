@@ -1,3 +1,4 @@
+#if __has_include("Router.hpp")
 #include "Router.hpp"
 #include "MemoryManager.hpp"
 #include "SecurityFirewall.hpp"
@@ -6,9 +7,22 @@
 #include "SandboxEnclave.hpp"
 #include "SimdVectorEngine.hpp"
 #include "FastScanner.hpp"
+#else
+#include "../include/Router.hpp"
+#include "../include/MemoryManager.hpp"
+#include "../include/SecurityFirewall.hpp"
+#include "../include/PromptManager.hpp"
+#include "../include/HardwareManager.hpp"
+#include "../include/SandboxEnclave.hpp"
+#include "../include/SimdVectorEngine.hpp"
+#include "../include/FastScanner.hpp"
+#endif
 
+#include <cstdint>
 #include <cstring>
+#include <cwchar>
 #include <memory>
+#include <string>
 
 #if defined(_WIN32) || defined(__CYGWIN__)
 #define SOVEREIGN_EXPORT __declspec(dllexport)

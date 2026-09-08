@@ -1,0 +1,47 @@
+[
+  {
+    "directory": "c:/V-MAX/cpp-core",
+    "arguments": ["clang++", "-std=c++20", "-Iinclude", "-c", "src/bindings.cpp"],
+    "file": "c:/V-MAX/cpp-core/src/bindings.cpp"
+  },
+  {
+    "directory": "c:/V-MAX/cpp-core",
+    "arguments": ["clang++", "-std=c++20", "-Iinclude", "-c", "src/FastScanner.cpp"],
+    "file": "c:/V-MAX/cpp-core/src/FastScanner.cpp"
+  },
+  {
+    "directory": "c:/V-MAX/cpp-core",
+    "arguments": ["clang++", "-std=c++20", "-Iinclude", "-c", "src/HardwareManager.cpp"],
+    "file": "c:/V-MAX/cpp-core/src/HardwareManager.cpp"
+  },
+  {
+    "directory": "c:/V-MAX/cpp-core",
+    "arguments": ["clang++", "-std=c++20", "-Iinclude", "-c", "src/MemoryManager.cpp"],
+    "file": "c:/V-MAX/cpp-core/src/MemoryManager.cpp"
+  },
+  {
+    "directory": "c:/V-MAX/cpp-core",
+    "arguments": ["clang++", "-std=c++20", "-Iinclude", "-c", "src/PromptManager.cpp"],
+    "file": "c:/V-MAX/cpp-core/src/PromptManager.cpp"
+  },
+  {
+    "directory": "c:/V-MAX/cpp-core",
+    "arguments": ["clang++", "-std=c++20", "-Iinclude", "-c", "src/Router.cpp"],
+    "file": "c:/V-MAX/cpp-core/src/Router.cpp"
+  },
+  {
+    "directory": "c:/V-MAX/cpp-core",
+    "arguments": ["clang++", "-std=c++20", "-Iinclude", "-c", "src/SandboxEnclave.cpp"],
+    "file": "c:/V-MAX/cpp-core/src/SandboxEnclave.cpp"
+  },
+  {
+    "directory": "c:/V-MAX/cpp-core",
+    "arguments": ["clang++", "-std=c++20", "-Iinclude", "-c", "src/SecurityFirewall.cpp"],
+    "file": "c:/V-MAX/cpp-core/src/SecurityFirewall.cpp"
+  },
+  {
+    "directory": "c:/V-MAX/cpp-core",
+    "arguments": ["clang++", "-std=c++20", "-Iinclude", "-c", "src/SimdVectorEngine.cpp"],
+    "file": "c:/V-MAX/cpp-core/src/SimdVectorEngine.cpp"
+  }
+]
