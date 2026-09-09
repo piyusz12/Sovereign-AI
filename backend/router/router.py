@@ -101,6 +101,24 @@ class ModelRouter:
         """Get the appropriate provider for a model."""
         return get_provider(model.provider.value, model.base_url)
 
+    def _category_for_model(self, model_id: str) -> str:
+        """Resolve a public model ID or provider tag to its registry category."""
+        normalized = model_id.value if hasattr(model_id, "value") else str(model_id)
+        normalized = normalized.strip().lower()
+
+        if normalized in self.registry.models:
+            return normalized
+
+        for category, model in self.registry.models.items():
+            if normalized in {
+                model.model_id.lower(),
+                model.name.lower(),
+                model.name.lower().replace(" (ollama)", ""),
+            }:
+                return category
+
+        raise ValueError(f"Unknown model: {model_id}")
+
     # ── Classify Only (Phase 6) ───────────────────────────────────────────
 
     async def classify_only(
@@ -177,7 +195,7 @@ class ModelRouter:
         # Step 1: Classify (or force)
         if force_model:
             classification = self.classifier.classify(user_input, has_image)
-            category = force_model
+            category = self._category_for_model(force_model)
             routing_decision = RoutingDecision(
                 task_type=classification.task_type.value,
                 model_category=category,
@@ -320,7 +338,7 @@ class ModelRouter:
         # Step 1: Classify
         if force_model:
             classification = self.classifier.classify(user_input, has_image)
-            category = force_model
+            category = self._category_for_model(force_model)
             routing_decision = RoutingDecision(
                 task_type=classification.task_type.value,
                 model_category=category,
@@ -493,6 +511,8 @@ class ModelRouter:
             )
 
             response_text = result.get("response", "")
+            if response_text.startswith("[Error calling model:"):
+                raise RuntimeError(response_text)
             model_used = result.get("model_used", {}).get("model_id", "")
             duration_ms = round((time.time() - start) * 1000, 2)
 
@@ -544,6 +564,17 @@ class ModelRouter:
             VisionResult with analysis text and metadata
         """
         start = time.time()
+
+        # Validate images input
+        if not images or all(not img.strip() for img in images):
+            return VisionResult(
+                content="",
+                model_used="",
+                duration_ms=0.0,
+                success=False,
+                error="No valid images provided for vision analysis.",
+            )
+
         try:
             result = await self.route(
                 user_input=prompt,
@@ -557,6 +588,26 @@ class ModelRouter:
             response_text = result.get("response", "")
             model_used = result.get("model_used", {}).get("model_id", "")
             duration_ms = round((time.time() - start) * 1000, 2)
+
+            # Detect error responses from the model
+            if response_text.startswith("[Error"):
+                return VisionResult(
+                    content="",
+                    model_used=model_used,
+                    duration_ms=duration_ms,
+                    success=False,
+                    error=response_text,
+                )
+
+            # Detect empty responses
+            if not response_text or not response_text.strip():
+                return VisionResult(
+                    content="",
+                    model_used=model_used,
+                    duration_ms=duration_ms,
+                    success=False,
+                    error="Vision model returned an empty response.",
+                )
 
             return VisionResult(
                 content=response_text,

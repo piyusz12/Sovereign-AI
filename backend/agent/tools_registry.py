@@ -127,6 +127,9 @@ def _run_unsupported_tool(task_type: str) -> Callable[[str, str], ToolExecution]
     return _stub
 
 
+SUPPORTED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".tif", ".webp"}
+MAX_VISION_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
+
 async def _execute_vision_async(query: str, context: str = "") -> ToolExecution:
     from backend.router.vision import analyze_vision
     from backend.security.enforcement import authorize_action, SecurityException
@@ -154,7 +157,25 @@ async def _execute_vision_async(query: str, context: str = "") -> ToolExecution:
     
     if not image_path.exists() or not image_path.is_file():
         return ToolExecution("vision", False, "", f"Image file not found: {image_path}")
-        
+
+    # Validate image extension
+    if image_path.suffix.lower() not in SUPPORTED_IMAGE_EXTENSIONS:
+        return ToolExecution(
+            "vision", False, "",
+            f"Unsupported image format '{image_path.suffix}'. "
+            f"Supported formats: {', '.join(sorted(SUPPORTED_IMAGE_EXTENSIONS))}"
+        )
+
+    # Validate file size
+    file_size = image_path.stat().st_size
+    if file_size > MAX_VISION_FILE_SIZE:
+        size_mb = round(file_size / (1024 * 1024), 1)
+        max_mb = MAX_VISION_FILE_SIZE // (1024 * 1024)
+        return ToolExecution(
+            "vision", False, "",
+            f"Image file too large ({size_mb} MB). Maximum allowed: {max_mb} MB."
+        )
+
     try:
         b64_data = base64.b64encode(image_path.read_bytes()).decode("utf-8")
         

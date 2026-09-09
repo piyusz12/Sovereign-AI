@@ -7,11 +7,17 @@ Uses Qwen3-VL-8B for visual analysis of P&IDs, diagrams, and scanned documents.
 from __future__ import annotations
 
 import base64
+import logging
 from pathlib import Path
 from typing import Any, Optional
 
 from backend.tools.base import BaseTool, ToolPermission
-from backend.router.vision import analyze_vision
+from backend.router.vision import analyze_vision, MAX_IMAGE_BYTES
+
+logger = logging.getLogger("sovereign.tools.image_analysis")
+
+# Supported image file extensions
+SUPPORTED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".tif", ".webp"}
 
 
 class ImageAnalysisTool(BaseTool):
@@ -52,6 +58,21 @@ class ImageAnalysisTool(BaseTool):
             p = Path(image_path)
             if not p.exists() or not p.is_file():
                 raise FileNotFoundError(f"Image file not found: {image_path}")
+
+            # Validate file extension
+            if p.suffix.lower() not in SUPPORTED_IMAGE_EXTENSIONS:
+                raise ValueError(
+                    f"Unsupported image format '{p.suffix}'. "
+                    f"Supported: {', '.join(sorted(SUPPORTED_IMAGE_EXTENSIONS))}"
+                )
+
+            # Validate file size
+            file_size = p.stat().st_size
+            if file_size > MAX_IMAGE_BYTES:
+                size_mb = round(file_size / (1024 * 1024), 1)
+                max_mb = MAX_IMAGE_BYTES // (1024 * 1024)
+                raise ValueError(f"Image file too large ({size_mb} MB). Maximum is {max_mb} MB.")
+
             b64_data = base64.b64encode(p.read_bytes()).decode("utf-8")
 
         result = await analyze_vision(
@@ -59,11 +80,22 @@ class ImageAnalysisTool(BaseTool):
             image_base64=b64_data,
         )
 
+        if not result.success:
+            logger.warning("Vision analysis failed for '%s': %s", image_path or "<base64>", result.error)
+            return {
+                "analysis": "",
+                "image_path": image_path,
+                "prompt": prompt,
+                "model": result.model_used,
+                "error": result.error,
+                "status": "error",
+            }
+
         return {
-            "analysis": result.response,
+            "analysis": result.content,
             "image_path": image_path,
             "prompt": prompt,
-            "model": result.model_name,
-            "metrics": result.metrics,
+            "model": result.model_used,
+            "duration_ms": result.duration_ms,
             "status": "success",
         }

@@ -13,7 +13,7 @@ import json
 import uuid
 import time
 import logging
-from typing import Optional
+from typing import Optional, List, Dict, Any
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, Depends, Request, status
 from fastapi.responses import StreamingResponse
@@ -289,6 +289,10 @@ async def analyze_vision(request: VisionAnalyzeRequest):
     Dedicated endpoint for vision analysis.
     Forces the vision model and specialized system prompt.
     """
+    # Validate images are non-empty
+    if not request.images or all(not img.strip() for img in request.images):
+        raise HTTPException(status_code=422, detail="At least one non-empty image is required.")
+
     try:
         result = await model_router.analyze_vision(
             prompt=request.prompt,
@@ -298,16 +302,19 @@ async def analyze_vision(request: VisionAnalyzeRequest):
         )
 
         if not result.success:
-            raise HTTPException(status_code=500, detail=result.error)
+            raise HTTPException(
+                status_code=500,
+                detail=result.error or "Vision analysis failed with no error details.",
+            )
 
         return VisionAnalyzeResponse(
             content=result.content,
-            route={
-                "task_type": TaskType.VISION,
-                "model": ModelName.QWEN3_VL_8B,
-                "reason": "Dedicated vision route using the local vision model",
-            },
-            model_used=result.model_used,
+            route=RouteInfo(
+                task_type=TaskType.VISION,
+                model=ModelName.QWEN3_VL_8B,
+                reason="Dedicated vision route using the local vision model",
+            ),
+            model_used=result.model_used or settings.ollama_vision_model,
             duration_ms=result.duration_ms,
         )
     except HTTPException:
@@ -491,18 +498,40 @@ async def generate_document(request: GenerateRequest):
 # ── Workflows ────────────────────────────────────────────────────────────
 from backend.api.schemas import WorkflowRequest
 from backend.workflows.engine import workflow_engine
+from backend.security.rbac import rbac_enforcer
 
 @router.post("/workflows/run", dependencies=[Depends(get_current_user)])
 async def run_flagship_workflow(request: WorkflowRequest, current_user: dict = Depends(get_current_user)):
     """
-    Execute a flagship SIH demo workflow.
+    Execute a flagship workflow with RBAC enforcement.
+    The user's role must have access to the requested workflow.
     """
+    user_role = current_user["role"]
+    if not rbac_enforcer.can_access_workflow(user_role, request.workflow_name):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Role '{user_role}' does not have access to workflow '{request.workflow_name}'",
+        )
     trace = await workflow_engine.execute(
-        user_role=current_user["role"],
+        user_role=user_role,
         request_type=request.workflow_name,
         inputs=request.inputs
     )
     return trace.model_dump()
+
+
+@router.get("/workflows/available")
+async def get_available_workflows(current_user: dict = Depends(get_current_user)):
+    """
+    Return the list of workflows the current user can access,
+    based on their RBAC role.
+    """
+    user_role = current_user["role"]
+    workflows = rbac_enforcer.get_accessible_workflows(user_role)
+    return {
+        "role": user_role,
+        "workflows": workflows,
+    }
 
 
 # ── Code Execution ────────────────────────────────────────────────────────────
@@ -560,10 +589,12 @@ async def login(request: Request):
     All authentication is local — no external identity providers.
     Supports both JSON payloads and Form Data.
     """
+    from datetime import timedelta
     from backend.security.auth import authenticate_user, create_access_token
 
     username = None
     password = None
+    remember_me = False
 
     content_type = request.headers.get("content-type", "")
     if "application/json" in content_type:
@@ -572,6 +603,7 @@ async def login(request: Request):
             if isinstance(body, dict):
                 username = body.get("username")
                 password = body.get("password")
+                remember_me = bool(body.get("remember_me", False))
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid JSON body")
     else:
@@ -579,6 +611,7 @@ async def login(request: Request):
             form = await request.form()
             username = form.get("username")
             password = form.get("password")
+            remember_me = bool(form.get("remember_me", False))
         except Exception:
             pass
         if not username or not password:
@@ -587,6 +620,7 @@ async def login(request: Request):
                 if isinstance(body, dict):
                     username = body.get("username")
                     password = body.get("password")
+                    remember_me = bool(body.get("remember_me", False))
             except Exception:
                 pass
 
@@ -597,8 +631,10 @@ async def login(request: Request):
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
+    expires_delta = timedelta(days=30) if remember_me else None
     token = create_access_token(
-        data={"sub": user.username, "role": user.role}
+        data={"sub": user.username, "role": user.role},
+        expires_delta=expires_delta,
     )
     return {
         "access_token": token,
@@ -607,6 +643,72 @@ async def login(request: Request):
             "username": user.username,
             "role": user.role,
             "department": user.department,
+        },
+    }
+
+
+class SignUpRequest(BaseModel):
+    username: str
+    password: str
+    role: str = "engineering"
+    department: Optional[str] = None
+    remember_me: bool = False
+
+
+@router.post("/auth/signup")
+async def signup_user(request: SignUpRequest):
+    """
+    Public self-registration endpoint.
+    Creates a new user account and returns an access token.
+    """
+    from datetime import timedelta
+    from backend.security.auth import user_store, create_access_token
+
+    username = request.username.strip()
+    password = request.password
+    if not username or not password:
+        raise HTTPException(status_code=422, detail="Username and password are required")
+
+    if len(password) < 4:
+        raise HTTPException(status_code=422, detail="Password must be at least 4 characters")
+
+    role = request.role.lower().strip()
+    valid_roles = ("admin", "engineering", "finance", "operations", "procurement", "hr")
+    if role not in valid_roles:
+        role = "engineering"
+
+    dept_map = {
+        "admin": "all",
+        "engineering": "engineering",
+        "finance": "finance",
+        "operations": "operations",
+        "procurement": "procurement",
+        "hr": "hr",
+    }
+    dept = request.department or dept_map.get(role, "engineering")
+
+    try:
+        user_data = user_store.create_user(
+            username=username,
+            password=password,
+            role=role,
+            department=dept,
+        )
+    except ValueError:
+        raise HTTPException(status_code=409, detail=f"Username '{username}' already exists")
+
+    expires_delta = timedelta(days=30) if request.remember_me else None
+    token = create_access_token(
+        data={"sub": user_data["username"], "role": user_data["role"]},
+        expires_delta=expires_delta,
+    )
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": {
+            "username": user_data["username"],
+            "role": user_data["role"],
+            "department": user_data["department"],
         },
     }
 
@@ -621,6 +723,50 @@ async def auth_me(current_user: dict = Depends(get_current_user)):
         "role": current_user["role"],
         "department": current_user["department"],
     }
+
+
+class RegisterRequest(BaseModel):
+    """Register a new user (admin only)."""
+    username: str
+    password: str
+    role: str
+    department: str
+
+
+@router.post("/auth/register", dependencies=[Depends(require_permission("all"))])
+async def register_user(request: RegisterRequest):
+    """
+    Create a new user account. Admin-only.
+    """
+    from backend.security.auth import user_store
+
+    try:
+        user_data = user_store.create_user(
+            username=request.username,
+            password=request.password,
+            role=request.role,
+            department=request.department,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+    return {
+        "message": f"User '{request.username}' created successfully",
+        "user": {
+            "username": user_data["username"],
+            "role": user_data["role"],
+            "department": user_data["department"],
+        },
+    }
+
+
+@router.get("/auth/users", dependencies=[Depends(require_permission("all"))])
+async def list_users():
+    """
+    List all registered users. Admin-only.
+    """
+    from backend.security.auth import user_store
+    return {"users": user_store.list_users()}
 
 # ── Admin Endpoints ───────────────────────────────────────────────────────────
 
@@ -657,3 +803,313 @@ async def admin_health():
         "sovereignty": "enforced",
         "details": services,
     }
+
+
+# ── Strategic Sovereign Architecture Endpoints ───────────────────────────────
+
+# 1. Cryptographic Attestation & TEE Endpoints
+@router.post("/attestation/challenge")
+async def attestation_challenge():
+    """Generates a cryptographically random session nonce for TEE attestation."""
+    from backend.security.attestation import attestation_gateway
+    nonce = attestation_gateway.generate_challenge_nonce()
+    return {"nonce": nonce, "enclave_type": attestation_gateway.enclave_type.value}
+
+
+@router.get("/attestation/report")
+async def attestation_report():
+    """Retrieves the current hardware enclave measurement and TCB state."""
+    from backend.security.attestation import attestation_gateway
+    meas = attestation_gateway.get_active_measurement()
+    return meas.to_dict()
+
+
+class AttestationVerifyRequest(BaseModel):
+    nonce: str
+    quote_hex: Optional[str] = None
+
+
+@router.post("/attestation/verify")
+async def attestation_verify(req: AttestationVerifyRequest):
+    """Verifies a hardware quote against the manufacturer root of trust."""
+    from backend.security.attestation import attestation_gateway
+    from backend.security.tamper_proof_audit import merkle_audit_ledger
+
+    report = attestation_gateway.verify_quote(req.nonce, req.quote_hex)
+    merkle_audit_ledger.append_event(
+        event_type="TEE_ATTESTATION_VERIFIED",
+        actor_id="TEE_GATEWAY",
+        payload={"is_valid": report.is_valid, "enclave_type": report.enclave_type, "pcr_quote": report.pcr_quote_hash}
+    )
+    return report.to_dict()
+
+
+@router.post("/attestation/export-proofs")
+async def attestation_export_proofs(req: AttestationVerifyRequest):
+    """Generates the triple-file proof package (HTML cert, binary quote, and signed JSON)."""
+    from backend.security.attestation import attestation_gateway
+    report = attestation_gateway.verify_quote(req.nonce, req.quote_hex)
+    proofs = attestation_gateway.generate_triple_file_proofs(report)
+    return proofs
+
+
+# 2. Advanced MCP Governance Firewall & ZKP Gateway
+class MCPEvaluateRequest(BaseModel):
+    tool_name: str
+    arguments: dict
+    user_id: str
+    role: str
+    jurisdiction: str = "IN_COUNTRY"
+
+
+@router.post("/mcp/evaluate-tool")
+async def mcp_evaluate_tool(req: MCPEvaluateRequest):
+    """Evaluates an LLM tool call against the MCP firewall policies."""
+    from backend.security.mcp_firewall import mcp_governance_firewall
+    from backend.security.tamper_proof_audit import merkle_audit_ledger
+
+    decision = mcp_governance_firewall.evaluate_invocation(
+        tool_name=req.tool_name,
+        arguments=req.arguments,
+        user_id=req.user_id,
+        user_role=req.role,
+        jurisdiction=req.jurisdiction
+    )
+    merkle_audit_ledger.append_event(
+        event_type="MCP_FIREWALL_EVALUATION",
+        actor_id=req.user_id,
+        payload={"tool": req.tool_name, "allowed": decision.allowed, "violation": decision.violation_reason}
+    )
+    return decision.to_dict()
+
+
+@router.get("/mcp/active-tokens")
+async def mcp_active_tokens():
+    """Returns active single-use MCP execution tokens."""
+    from backend.security.mcp_firewall import mcp_governance_firewall
+    tokens = mcp_governance_firewall.get_active_tokens()
+    return {"active_tokens": [t.to_dict() for t in tokens]}
+
+
+class ZKPRangeProofRequest(BaseModel):
+    value: int
+    threshold: int
+    operator: str = "<="
+    predicate_name: str = "budget_limit"
+
+
+@router.post("/zkp/generate-range-proof")
+async def zkp_generate_range_proof(req: ZKPRangeProofRequest):
+    """Generates a zero-knowledge range proof without revealing the plaintext value."""
+    from backend.security.zkp_gateway import zkp_gateway
+    proof = zkp_gateway.generate_range_proof(
+        value=req.value,
+        threshold=req.threshold,
+        operator=req.operator,
+        predicate_name=req.predicate_name
+    )
+    return proof.to_dict()
+
+
+class ZKPVerifyProofRequest(BaseModel):
+    proof: dict
+
+
+@router.post("/zkp/verify-proof")
+async def zkp_verify_proof(req: ZKPVerifyProofRequest):
+    """Verifies a zero-knowledge predicate proof."""
+    from backend.security.zkp_gateway import zkp_gateway, ZKPProof
+    p = ZKPProof(**req.proof)
+    valid = zkp_gateway.verify_proof(p)
+    return {"valid": valid, "predicate": p.predicate, "commitment": p.commitment}
+
+
+# 3. Culturally Adaptive Tokenization & Hardware Co-Design
+class AdaptiveTokenizeRequest(BaseModel):
+    text: str
+
+
+@router.post("/nlp/adaptive-tokenization")
+async def nlp_adaptive_tokenization(req: AdaptiveTokenizeRequest):
+    """Applies script-aware normalization and calculates token density metrics."""
+    from backend.nlp.adaptive_tokenization import adaptive_tokenizer
+    return adaptive_tokenizer.process_text(req.text)
+
+
+class HardwareManifestRequest(BaseModel):
+    model_id: str = "qwen2.5-coder:7b"
+    parameter_count_b: float = 7.0
+    vocab_size: int = 152064
+    context_window: int = 32768
+    architecture: str = "dense"
+    target_precision: str = "int4"
+    target_silicon: Optional[str] = None
+    enforce_confidential: bool = False
+
+
+@router.post("/optimization/hardware-manifest")
+async def optimization_hardware_manifest(req: HardwareManifestRequest):
+    """Generates silicon hardware co-design deployment manifest."""
+    from backend.optimization.hardware_mapping import hardware_co_design_mapper, ModelProfile
+    profile = ModelProfile(
+        model_id=req.model_id,
+        parameter_count_b=req.parameter_count_b,
+        vocab_size=req.vocab_size,
+        context_window=req.context_window,
+        architecture=req.architecture,
+        target_precision=req.target_precision
+    )
+    manifest = hardware_co_design_mapper.generate_manifest(
+        profile=profile,
+        target_name=req.target_silicon,
+        enforce_confidential=req.enforce_confidential
+    )
+    return manifest.to_dict()
+
+
+# 4. Verifiable RAG with Evidence-Sufficiency Gate
+class VerifiableRAGQueryRequest(BaseModel):
+    query: str
+    documents: List[dict]
+    user_clearance: str = "INTERNAL"
+    similarity_threshold: float = 0.65
+
+
+@router.post("/rag/verifiable-query")
+async def rag_verifiable_query(req: VerifiableRAGQueryRequest):
+    """Executes layout-preserving segmentation, Evidence-Sufficiency Gate, and Provenance Guardrail."""
+    from backend.rag.verifiable_rag import verifiable_rag_engine, VerifiableChunk
+    from backend.security.tamper_proof_audit import merkle_audit_ledger
+
+    chunks = []
+    for d in req.documents:
+        chunks.append(VerifiableChunk(
+            chunk_id=d.get("chunk_id", "CHK-DEMO"),
+            doc_id=d.get("doc_id", "DOC-1"),
+            content=d.get("content", ""),
+            metadata=d.get("metadata", {}),
+            content_hash=d.get("content_hash", "abc"),
+            clearance_required=d.get("clearance_required", "INTERNAL"),
+            similarity_score=float(d.get("similarity_score", 0.7))
+        ))
+
+    gate_result = verifiable_rag_engine.evaluate_evidence_sufficiency(
+        chunks=chunks,
+        user_clearance=req.user_clearance,
+        threshold=req.similarity_threshold
+    )
+
+    dummy_answer = f"According to verified documentation [{chunks[0].chunk_id}], the system configuration is operational." if gate_result.sufficient else ""
+
+    response = verifiable_rag_engine.enforce_provenance_guardrails(
+        query=req.query,
+        generated_answer=dummy_answer,
+        evidence_result=gate_result
+    )
+
+    merkle_audit_ledger.append_event(
+        event_type="VERIFIABLE_RAG_EVALUATION",
+        actor_id="RAG_GATEWAY",
+        payload={"query": req.query, "gate": response.evidence_gate_status, "verified": response.verified}
+    )
+
+    return response.to_dict()
+
+
+# 5. Infrastructure Telemetry & Sustainability Control
+@router.get("/telemetry/fusion")
+async def telemetry_fusion():
+    """Returns multi-domain physical telemetry snapshot and carbon cost recommendations."""
+    from backend.telemetry.fusion_engine import telemetry_fusion_engine
+    snapshot = telemetry_fusion_engine.sample_sensors()
+    return snapshot.to_dict()
+
+
+class UpdateCarbonRequest(BaseModel):
+    grid_carbon_intensity_gco2_kwh: float
+
+
+@router.post("/telemetry/update-carbon")
+async def telemetry_update_carbon(req: UpdateCarbonRequest):
+    """Updates real-time regional grid carbon intensity."""
+    from backend.telemetry.fusion_engine import telemetry_fusion_engine
+    telemetry_fusion_engine.update_grid_carbon_intensity(req.grid_carbon_intensity_gco2_kwh)
+    return {"status": "updated", "grid_carbon_intensity": req.grid_carbon_intensity_gco2_kwh}
+
+
+# 6. Multi-Backend Orchestrator & Fallback
+class RouteEvaluationRequest(BaseModel):
+    task_type: str = "coding"
+    user_role: str = "software_engineer"
+    required_context_length: int = 4096
+    allow_egress: bool = False
+
+
+@router.post("/router/sovereign-fallback")
+async def router_sovereign_fallback(req: RouteEvaluationRequest):
+    """Evaluates 3-tier sovereign fallback destination."""
+    from backend.router.fallback_orchestrator import fallback_orchestrator
+    result = fallback_orchestrator.evaluate_route(
+        task_type=req.task_type,
+        user_role=req.user_role,
+        required_context_length=req.required_context_length,
+        allow_egress=req.allow_egress
+    )
+    return result.to_dict()
+
+
+# 7. Mantic Scaffold Meta-Prompting
+class ManticScaffoldRequest(BaseModel):
+    objective: str
+    custom_layers: Optional[List[dict]] = None
+
+
+@router.post("/meta/mantic-scaffold")
+async def meta_mantic_scaffold(req: ManticScaffoldRequest):
+    """Calculates M-Score, inter-layer Coherence, and generates compositional execution plans."""
+    from backend.meta.mantic_scaffold import mantic_scaffold_engine
+    analysis = mantic_scaffold_engine.analyze_scaffold(
+        objective=req.objective,
+        custom_layers=req.custom_layers
+    )
+    return analysis.to_dict()
+
+
+# 8. CyberScan & Tamper-Proof Audit
+class CyberScanRequest(BaseModel):
+    code_snippet: Optional[str] = None
+    target_directory: Optional[str] = None
+
+
+@router.post("/security/cyberscan/run")
+async def security_cyberscan_run(req: CyberScanRequest):
+    """Runs isolated vulnerability scanner for code snippets or workspace directories."""
+    from backend.security.cyberscan import cyberscan_agent
+    from backend.security.tamper_proof_audit import merkle_audit_ledger
+
+    if req.code_snippet:
+        findings = cyberscan_agent.scan_code_snippet(req.code_snippet)
+        return {"findings": [f.to_dict() for f in findings], "mode": "snippet"}
+
+    target = req.target_directory or "backend"
+    report = cyberscan_agent.run_repository_scan(target)
+
+    merkle_audit_ledger.append_event(
+        event_type="CYBERSCAN_AUDIT_COMPLETED",
+        actor_id="CYBERSCAN_AGENT",
+        payload={"scan_id": report.scan_id, "findings_count": report.findings_count, "compliance_score": report.compliance_score}
+    )
+    return report.to_dict()
+
+
+@router.get("/security/audit-ledger")
+async def security_audit_ledger():
+    """Returns Merkle root, verification integrity status, and recent chained audit blocks."""
+    from backend.security.tamper_proof_audit import merkle_audit_ledger
+    integrity = merkle_audit_ledger.verify_ledger_integrity()
+    blocks = merkle_audit_ledger.get_recent_blocks(15)
+    return {
+        "integrity": integrity,
+        "recent_blocks": blocks
+    }
+

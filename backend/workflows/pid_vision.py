@@ -41,11 +41,12 @@ async def run_pid_workflow(trace: WorkflowTrace, user_role: str, inputs: dict):
             "valves": ["V-101", "V-102", "V-103"],
             "pipelines": ["1 inch SCH 40 PVC", "1.5 inch SCH 40 PVC"]
         })
+        audit_service.log(action="vision.analyze", status="warning", error_code="VISION_FALLBACK", resource_id=Path(file_path).name, metadata={"fallback": "mock_data"})
+        trace.add_step("Vision Extraction", status="warning", details="Vision failed — using mock P&ID data for demonstration")
     else:
         extracted_text = vision_res.output
-        
-    audit_service.log(action="vision.analyze", status="success", resource_id=Path(file_path).name)
-    trace.add_step("Vision Extraction", status="success", details="Extracted P&ID topology via Qwen3-VL-8B")
+        audit_service.log(action="vision.analyze", status="success", resource_id=Path(file_path).name)
+        trace.add_step("Vision Extraction", status="success", details="Extracted P&ID topology via Qwen3-VL-8B")
     
     # 2. Sandbox Validation / Formatting
     # The vision output might contain markdown or slight imperfections. Let's use the local coder to validate and parse it.

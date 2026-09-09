@@ -32,10 +32,15 @@ async def run_inspection_workflow(trace: WorkflowTrace, user_role: str, inputs: 
     vision_start = trace.steps[-1].duration_ms
     vision_res = await _execute_vision_async(f"{query} Extract key findings, measurements, and equipment tags as structured JSON.", str(file_path))
     if not vision_res.success:
-        raise Exception(f"Vision analysis failed: {vision_res.error}")
-    
-    trace.add_step("Vision Extraction", status="success", details="Extracted findings via Qwen3-VL-8B")
-    extracted_text = vision_res.output
+        logger.warning("Vision analysis failed for inspection workflow: %s", vision_res.error)
+        extracted_text = json.dumps({
+            "findings": "Vision extraction failed — manual review required.",
+            "error": vision_res.error or "Unknown vision error",
+        })
+        trace.add_step("Vision Extraction", status="warning", details=f"Vision failed: {vision_res.error}. Using fallback.")
+    else:
+        trace.add_step("Vision Extraction", status="success", details="Extracted findings via Qwen3-VL-8B")
+        extracted_text = vision_res.output
     
     # 2. RAG Search
     rag_res = await adaptive_rag.query(extracted_text, user_role=user_role, top_k=3)

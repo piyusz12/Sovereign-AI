@@ -63,3 +63,23 @@ gpu:
   total_vram_mb: 8192
   max_heavy_models: 1
   model: "RTX 4060 Laptop"
+
+compute:
+  mode: "hybrid_balanced" # Equal GPU + CPU computational power sharing
+  cpu_physical_cores: 8
+  cpu_logical_threads: 16
+  allocated_inference_threads: 8
+  enable_simd_avx2: true
+  workload_balance:
+    gpu_ratio: 0.50
+    cpu_ratio: 0.50
+    gpu_tasks:
+      - "llm_attention_layers"
+      - "transformer_forward_pass"
+      - "vram_kv_cache"
+    cpu_tasks:
+      - "prompt_eval_tensors"
+      - "simd_avx2_vector_search"
+      - "rag_document_chunking"
+      - "ast_syntax_parsing"
+

@@ -70,15 +70,32 @@ def get_all_models() -> List[ModelInfo]:
     return list(_MODELS_DB.values())
 
 def get_model(model_id: str) -> Optional[ModelInfo]:
-    """Get a specific model by ID."""
-    return _MODELS_DB.get(model_id)
+    """Get a specific model by ID, name, role, or alias."""
+    if not model_id:
+        return None
+    if model_id in _MODELS_DB:
+        return _MODELS_DB[model_id]
+
+    norm = model_id.strip().lower()
+    for m in _MODELS_DB.values():
+        if m.id.lower() == norm or m.name.lower() == norm or m.role.lower() == norm:
+            return m
+        # Strip '-local' or ':version' for loose matching
+        id_stem = m.id.replace("-local", "").lower()
+        if id_stem == norm or id_stem == norm.replace("-local", ""):
+            return m
+        name_stem = m.name.replace(":", "-").lower()
+        if norm.replace(":", "-") in name_stem or name_stem in norm.replace(":", "-"):
+            return m
+    return None
 
 def update_model_status(model_id: str, status: ModelStatus, loaded: bool = False, latency_ms: Optional[float] = None, error: Optional[str] = None):
     """Update runtime telemetry for a model."""
-    if model_id in _MODELS_DB:
-        _MODELS_DB[model_id].status = status
-        _MODELS_DB[model_id].loaded = loaded
+    m = get_model(model_id)
+    if m:
+        m.status = status
+        m.loaded = loaded
         if latency_ms is not None:
-            _MODELS_DB[model_id].latency_ms = latency_ms
+            m.latency_ms = latency_ms
         if error is not None:
-            _MODELS_DB[model_id].last_error = error
+            m.last_error = error
