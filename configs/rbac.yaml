@@ -7,6 +7,7 @@ roles:
     display_name: "Administrator"
     departments: ["all"]
     document_types: ["all"]
+    workflows: ["all"]
     permissions:
       write: true
       execute_code: true
@@ -14,9 +15,10 @@ roles:
       admin: true
 
   engineering:
-    display_name: "Engineering"
+    display_name: "Software Engineer"
     departments: ["engineering", "operations", "public"]
     document_types: ["inspection_report", "sop", "pid", "specification", "manual"]
+    workflows: ["coding", "assistance"]
     permissions:
       write: true
       execute_code: true
@@ -27,6 +29,7 @@ roles:
     display_name: "Finance"
     departments: ["finance", "procurement", "public"]
     document_types: ["budget", "invoice", "purchase_order", "financial_report"]
+    workflows: ["inspection", "pid_vision", "assistance"]
     permissions:
       write: false
       execute_code: false
@@ -37,6 +40,7 @@ roles:
     display_name: "Procurement"
     departments: ["procurement", "finance", "public"]
     document_types: ["purchase_order", "vendor_report", "contract", "invoice"]
+    workflows: ["inspection", "assistance"]
     permissions:
       write: true
       execute_code: false
@@ -47,6 +51,7 @@ roles:
     display_name: "Human Resources"
     departments: ["hr", "public"]
     document_types: ["policy", "compliance", "training"]
+    workflows: ["assistance"]
     permissions:
       write: false
       execute_code: false
@@ -57,6 +62,7 @@ roles:
     display_name: "Operations"
     departments: ["operations", "engineering", "public"]
     document_types: ["inspection_report", "sop", "maintenance_log", "telemetry"]
+    workflows: ["inspection", "pid_vision", "assistance"]
     permissions:
       write: true
       execute_code: true

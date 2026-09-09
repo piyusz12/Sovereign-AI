@@ -53,7 +53,6 @@ export interface WorkflowRunResponse {
 class ApiClient {
   private token: string | null = null;
   private currentUser: AuthUser | null = null;
-  private initPromise: Promise<void> | null = null;
 
   constructor() {
     // Restore token from localStorage if available
@@ -75,26 +74,15 @@ class ApiClient {
     if (this.token && this.currentUser) {
       return this.token;
     }
-    if (!this.initPromise) {
-      this.initPromise = this.loginDefault();
-    }
-    await this.initPromise;
-    return this.token || '';
+    // No auto-login — user must authenticate through the login page
+    throw new Error('Not authenticated');
   }
 
-  public async loginDefault(): Promise<void> {
-    try {
-      await this.login('admin', 'admin123');
-    } catch (err) {
-      console.warn('Auto-login as admin failed, operating in offline/demo mode:', err);
-    }
-  }
-
-  public async login(username: string, password: string): Promise<AuthUser> {
+  public async login(username: string, password: string, rememberMe = false): Promise<AuthUser> {
     const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, remember_me: rememberMe }),
     });
 
     if (!res.ok) {
@@ -111,15 +99,65 @@ class ApiClient {
     if (this.currentUser) {
       localStorage.setItem('sovereign_user', JSON.stringify(this.currentUser));
     }
+    if (rememberMe) {
+      localStorage.setItem('sovereign_remembered_user', JSON.stringify({ username }));
+    } else {
+      localStorage.removeItem('sovereign_remembered_user');
+    }
+    return this.currentUser!;
+  }
+
+  public async signup(params: {
+    username: string;
+    password: string;
+    role?: string;
+    department?: string;
+    rememberMe?: boolean;
+  }): Promise<AuthUser> {
+    const res = await fetch(`${API_BASE}/api/v1/auth/signup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: params.username,
+        password: params.password,
+        role: params.role || 'engineering',
+        department: params.department,
+        remember_me: params.rememberMe ?? false,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Signup failed' }));
+      throw new Error(err.detail || 'Sign up failed');
+    }
+
+    const data = await res.json();
+    this.token = data.access_token;
+    this.currentUser = data.user;
+    if (this.token) {
+      localStorage.setItem('sovereign_jwt', this.token);
+    }
+    if (this.currentUser) {
+      localStorage.setItem('sovereign_user', JSON.stringify(this.currentUser));
+    }
+    if (params.rememberMe) {
+      localStorage.setItem('sovereign_remembered_user', JSON.stringify({ username: params.username }));
+    } else {
+      localStorage.removeItem('sovereign_remembered_user');
+    }
     return this.currentUser!;
   }
 
   public logout() {
     this.token = null;
     this.currentUser = null;
-    this.initPromise = null;
     localStorage.removeItem('sovereign_jwt');
     localStorage.removeItem('sovereign_user');
+    localStorage.removeItem('sovereign_remembered_user');
+  }
+
+  public clearSavedCredentials() {
+    localStorage.removeItem('sovereign_remembered_user');
   }
 
   public getUser(): AuthUser | null {
@@ -129,9 +167,9 @@ class ApiClient {
   private async fetchAuth(
     url: string,
     options: RequestInit = {},
-    retryAfterLogin = true,
   ): Promise<Response> {
-    await this.ensureAuthenticated();
+    // If we have a token, attach it; don't throw if not authenticated
+    // (some calls might be attempted during auth flow)
     const headers = new Headers(options.headers || {});
     if (this.token) {
       headers.set('Authorization', `Bearer ${this.token}`);
@@ -141,12 +179,9 @@ class ApiClient {
       headers,
     });
 
-    if (response.status === 401 && retryAfterLogin) {
+    if (response.status === 401) {
+      // Token expired or invalid — force re-login
       this.logout();
-      await this.loginDefault();
-      if (this.token) {
-        return this.fetchAuth(url, options, false);
-      }
     }
 
     return response;
@@ -167,24 +202,30 @@ class ApiClient {
 
   // --- Models ---
   public async getModelStatus() {
-    const res = await fetch(`${API_BASE}/api/v1/models/status`);
+    const res = await this.fetchAuth(`${API_BASE}/api/v1/models/status`);
     if (!res.ok) throw new Error('Failed to fetch model status');
     return res.json();
   }
 
   public async loadModel(modelId: string) {
-    const res = await fetch(`${API_BASE}/api/v1/models/${encodeURIComponent(modelId)}/load`, {
+    const res = await this.fetchAuth(`${API_BASE}/api/v1/models/${encodeURIComponent(modelId)}/load`, {
       method: 'POST',
     });
-    if (!res.ok) throw new Error('Failed to load model');
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to load model' }));
+      throw new Error(err.detail || 'Failed to load model');
+    }
     return res.json();
   }
 
   public async unloadModel(modelId: string) {
-    const res = await fetch(`${API_BASE}/api/v1/models/${encodeURIComponent(modelId)}/unload`, {
+    const res = await this.fetchAuth(`${API_BASE}/api/v1/models/${encodeURIComponent(modelId)}/unload`, {
       method: 'POST',
     });
-    if (!res.ok) throw new Error('Failed to unload model');
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to unload model' }));
+      throw new Error(err.detail || 'Failed to unload model');
+    }
     return res.json();
   }
 
@@ -339,6 +380,202 @@ class ApiClient {
     if (action) url += `&action=${encodeURIComponent(action)}`;
     const res = await this.fetchAuth(url);
     if (!res.ok) throw new Error('Failed to fetch audit events');
+    return res.json();
+  }
+
+  public async clearAuditEvents(): Promise<void> {
+    const res = await this.fetchAuth(`${API_BASE}/api/v1/audit/events`, { method: 'DELETE' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to clear audit logs' }));
+      throw new Error(err.detail || 'Failed to clear audit logs');
+    }
+  }
+
+  // --- Workflows (RBAC-aware) ---
+  public async getAvailableWorkflows(): Promise<string[]> {
+    const res = await this.fetchAuth(`${API_BASE}/api/v1/workflows/available`);
+    if (!res.ok) throw new Error('Failed to fetch available workflows');
+    const data = await res.json();
+    return data.workflows || [];
+  }
+
+  // --- Admin: User Management ---
+  public async register(
+    username: string,
+    password: string,
+    role: string,
+    department: string,
+  ) {
+    const res = await this.fetchAuth(`${API_BASE}/api/v1/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password, role, department }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Registration failed' }));
+      throw new Error(err.detail || `Server error: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  public async listUsers() {
+    const res = await this.fetchAuth(`${API_BASE}/api/v1/auth/users`);
+    if (!res.ok) throw new Error('Failed to fetch users');
+    return res.json();
+  }
+
+  // ── Strategic Sovereign Architecture ─────────────────────────────────────
+
+  // Attestation & TEE
+  public async getAttestationChallenge() {
+    const res = await fetch(`${API_BASE}/api/v1/attestation/challenge`, { method: 'POST' });
+    if (!res.ok) throw new Error('Failed to generate challenge');
+    return res.json();
+  }
+
+  public async getAttestationReport() {
+    const res = await fetch(`${API_BASE}/api/v1/attestation/report`);
+    if (!res.ok) throw new Error('Failed to fetch attestation report');
+    return res.json();
+  }
+
+  public async verifyAttestationQuote(nonce: string, quote_hex?: string) {
+    const res = await fetch(`${API_BASE}/api/v1/attestation/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nonce, quote_hex }),
+    });
+    if (!res.ok) throw new Error('Attestation verification failed');
+    return res.json();
+  }
+
+  public async exportAttestationProofs(nonce: string, quote_hex?: string) {
+    const res = await fetch(`${API_BASE}/api/v1/attestation/export-proofs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nonce, quote_hex }),
+    });
+    if (!res.ok) throw new Error('Exporting proofs failed');
+    return res.json();
+  }
+
+  // MCP Governance Firewall & ZKP Gateway
+  public async evaluateMcpTool(tool_name: string, args: Record<string, any>, user_id: string, role: string, jurisdiction: string = 'IN_COUNTRY') {
+    const res = await this.fetchAuth(`${API_BASE}/api/v1/mcp/evaluate-tool`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tool_name, arguments: args, user_id, role, jurisdiction }),
+    });
+    if (!res.ok) throw new Error('MCP evaluation failed');
+    return res.json();
+  }
+
+  public async getActiveMcpTokens() {
+    const res = await this.fetchAuth(`${API_BASE}/api/v1/mcp/active-tokens`);
+    if (!res.ok) throw new Error('Failed to fetch active MCP tokens');
+    return res.json();
+  }
+
+  public async generateZkpRangeProof(value: number, threshold: number, operator: string = '<=', predicate_name: string = 'budget_limit') {
+    const res = await fetch(`${API_BASE}/api/v1/zkp/generate-range-proof`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value, threshold, operator, predicate_name }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Proof generation failed' }));
+      throw new Error(err.detail || 'ZKP Range Proof failed');
+    }
+    return res.json();
+  }
+
+  public async verifyZkpProof(proof: Record<string, any>) {
+    const res = await fetch(`${API_BASE}/api/v1/zkp/verify-proof`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ proof }),
+    });
+    if (!res.ok) throw new Error('ZKP verification failed');
+    return res.json();
+  }
+
+  // Mantic Scaffold Meta-Prompting
+  public async runManticScaffold(objective: string, custom_layers?: any[]) {
+    const res = await fetch(`${API_BASE}/api/v1/meta/mantic-scaffold`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ objective, custom_layers }),
+    });
+    if (!res.ok) throw new Error('Mantic Scaffold analysis failed');
+    return res.json();
+  }
+
+  // CyberScan & Tamper-Proof Audit
+  public async runCyberScan(target_directory?: string, code_snippet?: string) {
+    const res = await this.fetchAuth(`${API_BASE}/api/v1/security/cyberscan/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target_directory, code_snippet }),
+    });
+    if (!res.ok) throw new Error('CyberScan execution failed');
+    return res.json();
+  }
+
+  public async getAuditLedger() {
+    const res = await this.fetchAuth(`${API_BASE}/api/v1/security/audit-ledger`);
+    if (!res.ok) throw new Error('Failed to fetch audit ledger');
+    return res.json();
+  }
+
+  // Verifiable RAG
+  public async queryVerifiableRag(query: string, documents: any[], user_clearance: string = 'INTERNAL', similarity_threshold: number = 0.65) {
+    const res = await this.fetchAuth(`${API_BASE}/api/v1/rag/verifiable-query`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, documents, user_clearance, similarity_threshold }),
+    });
+    if (!res.ok) throw new Error('Verifiable RAG query failed');
+    return res.json();
+  }
+
+  // Infrastructure Telemetry
+  public async getTelemetryFusion() {
+    const res = await fetch(`${API_BASE}/api/v1/telemetry/fusion`);
+    if (!res.ok) throw new Error('Failed to fetch telemetry fusion');
+    return res.json();
+  }
+
+  // Unified Trust Layer
+  public async getTrustOverview() {
+    const res = await fetch(`${API_BASE}/api/v1/trust/overview`);
+    if (!res.ok) throw new Error('Failed to fetch trust layer overview');
+    return res.json();
+  }
+
+  public async evaluateEvidenceGate(
+    query: string = 'Inspect valve V-204 status and SOP pressure limits',
+    user_clearance: string = 'INTERNAL',
+    threshold: number = 0.65,
+    simulate_refusal: boolean = false
+  ) {
+    const res = await fetch(`${API_BASE}/api/v1/trust/evidence-eval`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, user_clearance, threshold, simulate_refusal }),
+    });
+    if (!res.ok) throw new Error('Evidence gate evaluation failed');
+    return res.json();
+  }
+
+  public async getProvenanceSample() {
+    const res = await fetch(`${API_BASE}/api/v1/trust/provenance-sample`);
+    if (!res.ok) throw new Error('Failed to fetch provenance sample');
+    return res.json();
+  }
+
+  public async getMcpEvents() {
+    const res = await fetch(`${API_BASE}/api/v1/trust/mcp-events`);
+    if (!res.ok) throw new Error('Failed to fetch MCP firewall events');
     return res.json();
   }
 }

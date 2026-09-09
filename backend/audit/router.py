@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.audit.schemas import AuditEventResponse, AuditEvent
 from backend.audit.service import audit_service
-from backend.security.dependencies import require_permission
+from backend.security.dependencies import get_current_user, require_permission
 
 router = APIRouter(prefix="/audit", tags=["Audit Logging"])
 
@@ -51,3 +51,11 @@ async def get_workflow_trace(
     events = audit_service.get_events(limit=1000, trace_id=trace_id)
     events.reverse() # chronological
     return AuditEventResponse(events=events, total=len(events))
+
+
+@router.delete("/events", status_code=204)
+async def clear_audit_events(current_user: dict = Depends(get_current_user)):
+    """Clear all persisted audit events. This destructive action is admin-only."""
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only administrators can clear audit logs")
+    audit_service.clear()

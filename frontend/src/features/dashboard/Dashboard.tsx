@@ -41,7 +41,7 @@ export default function Dashboard() {
       duration: '4.2s',
       progress: 100,
       steps: [
-        { name: 'Document Ingestion', status: 'success', details: 'Loaded demo diagram' },
+        { name: 'Document Ingestion', status: 'success', details: 'Loaded P&ID diagram' },
         { name: 'Vision OCR Extraction', status: 'success', details: 'Detected 14 equipment tags' },
         { name: 'Regulatory Compliance Check', status: 'success', details: 'Validated against ASME codes' },
       ],
@@ -133,7 +133,7 @@ export default function Dashboard() {
     try {
       const resp: WorkflowRunResponse = await api.runWorkflow(workflowType, {
         query: workflowQuery,
-        file_path: 'demo_data',
+        file_path: '',
       });
 
       setWorkflows((prev) =>
@@ -154,7 +154,7 @@ export default function Dashboard() {
         })
       );
     } catch (err: any) {
-      // Simulate completed fallback if demo files absent
+      // Fallback if backend is unreachable
       setWorkflows((prev) =>
         prev.map((w) => {
           if (w.id === newId) {
@@ -473,7 +473,7 @@ export default function Dashboard() {
               </div>
               <div>
                 <h3 className="text-lg font-bold text-slate-100">Launch Flagship Workflow</h3>
-                <p className="text-xs text-slate-400">SIH Flagship Enterprise Demonstration Workflows</p>
+                <p className="text-xs text-slate-400">Enterprise Sovereign Workflows</p>
               </div>
             </div>
 

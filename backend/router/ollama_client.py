@@ -154,7 +154,7 @@ class OllamaClient:
         """Create an httpx client with the given timeout."""
         return httpx.AsyncClient(
             base_url=self.base_url,
-            timeout=httpx.Timeout(timeout, connect=5.0),
+            timeout=httpx.Timeout(timeout, connect=1.0),
         )
 
     # ── Model Management ──────────────────────────────────────────────────
@@ -377,6 +377,7 @@ class OllamaClient:
             "options": {
                 "temperature": temperature,
                 "num_predict": max_tokens,
+                "num_thread": max(1, settings.cpu_compute_threads),
             },
         }
         if response_format:
@@ -465,6 +466,7 @@ class OllamaClient:
             "options": {
                 "temperature": temperature,
                 "num_predict": max_tokens,
+                "num_thread": max(1, settings.cpu_compute_threads),
             },
         }
 
@@ -524,6 +526,7 @@ class OllamaClient:
             "options": {
                 "temperature": temperature,
                 "num_predict": max_tokens,
+                "num_thread": max(1, settings.cpu_compute_threads),
             },
         }
         if system:

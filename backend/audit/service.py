@@ -225,6 +225,13 @@ class AuditService:
             logger.error(f"Failed to read audit events from DB: {e}")
             return []
 
+    def clear(self) -> None:
+        """Delete persisted audit events and truncate the JSONL audit log."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("DELETE FROM audit_events")
+            conn.commit()
+        self.log_path.write_text("", encoding="utf-8")
+
 
 # Global singleton instance
 audit_service = AuditService()

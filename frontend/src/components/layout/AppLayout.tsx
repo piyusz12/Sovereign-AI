@@ -9,33 +9,40 @@
  * ├───────────────┴───────────────────────────┴──────────────────┤
  * │ COMMAND BAR                                                  │
  * └──────────────────────────────────────────────────────────────┘
+ *
+ * Wrapped in AuthGuard — renders login page if not authenticated.
  */
 
 import { useEffect } from 'react';
 import { useAppStore } from '@/store/appStore';
+import { useMissionStore } from '@/store/missionStore';
 import { api } from '@/services/api';
 
+import { AuthGuard } from '@/features/auth/AuthGuard';
 import { TopBar } from './TopBar';
 import { MissionRail } from './MissionRail';
-import { MissionCanvas } from '../mission/MissionCanvas';
 import { SystemPulse } from './SystemPulse';
 import { CommandBar } from './CommandBar';
-import { TrustCenter } from '../trust/TrustCenter';
+import { TrustLayerDeck } from '@/features/trust/TrustLayerDeck';
+import { ModelDeck } from '@/features/models/ModelDeck';
+import { AttestationDeck } from '@/features/attestation/AttestationDeck';
+import { McpGovernanceDeck } from '@/features/mcp/McpGovernanceDeck';
+import { ManticScaffoldDeck } from '@/features/mantic/ManticScaffoldDeck';
+import { CyberScanDeck } from '@/features/security/CyberScanDeck';
+import { VerifiableRagDeck } from '@/features/rag/VerifiableRagDeck';
+import { ModelWorkspaces } from '@/features/models/ModelWorkspaces';
+import { MissionCanvas } from '../mission/MissionCanvas';
 
-export function AppLayout() {
-  const { ui, updateTelemetry, updateTrust, setCurrentUser } = useAppStore();
+function AppContent() {
+  const { ui, updateTelemetry, updateTrust } = useAppStore();
   const { rightPanelVisible } = ui;
   const activeView = ui.activeView;
+  const activeMission = useMissionStore((state) => state.getActiveMission());
 
-  // Initialize auth and start polling
+  // Start polling after authentication
   useEffect(() => {
     const init = async () => {
       try {
-        await api.ensureAuthenticated();
-        const user = api.getUser();
-        if (user) {
-          setCurrentUser(user);
-        }
         const health = await api.getHealth();
         if (health) {
           updateTrust({ is_local: health.sovereign });
@@ -58,13 +65,7 @@ export function AppLayout() {
           });
         }
       } catch {
-        // Simulate subtle telemetry changes for demo
-        updateTelemetry({
-          gpu_percent: 55 + Math.round(Math.random() * 20),
-          tokens_per_sec: 28 + Math.round(Math.random() * 8 * 10) / 10,
-          ttft_ms: 380 + Math.round(Math.random() * 100),
-          itl_ms: 45 + Math.round(Math.random() * 15),
-        });
+        // Backend unreachable — keep last known values
       }
     };
 
@@ -76,9 +77,30 @@ export function AppLayout() {
   // Determine center content
   const renderCenter = () => {
     if (activeView === 'trust') {
-      return <TrustCenter />;
+      return <TrustLayerDeck />;
     }
-    return <MissionCanvas />;
+    if (activeView === 'system') {
+      return <ModelDeck />;
+    }
+    if (activeView === 'attestation') {
+      return <AttestationDeck />;
+    }
+    if (activeView === 'mcp') {
+      return <McpGovernanceDeck />;
+    }
+    if (activeView === 'mantic') {
+      return <ManticScaffoldDeck />;
+    }
+    if (activeView === 'cyberscan') {
+      return <CyberScanDeck />;
+    }
+    if (activeView === 'rag') {
+      return <VerifiableRagDeck />;
+    }
+    if (activeView === 'reasoning' || activeView === 'coding' || activeView === 'vision') {
+      return <ModelWorkspaces activePanel={activeView} />;
+    }
+    return activeMission ? <MissionCanvas /> : <ModelWorkspaces />;
   };
 
   return (
@@ -104,5 +126,13 @@ export function AppLayout() {
       {/* Bottom — Command Bar */}
       <CommandBar />
     </div>
+  );
+}
+
+export function AppLayout() {
+  return (
+    <AuthGuard>
+      <AppContent />
+    </AuthGuard>
   );
 }

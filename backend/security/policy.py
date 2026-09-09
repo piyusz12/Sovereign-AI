@@ -40,6 +40,8 @@ DEFAULT_POLICY: dict[str, PolicyRule] = {
     "create_xlsx": PolicyRule("create_xlsx", ActionDecision.ALLOWED, "Spreadsheet generation"),
     "create_pptx": PolicyRule("create_pptx", ActionDecision.ALLOWED, "Presentation generation"),
     "inspect_image": PolicyRule("inspect_image", ActionDecision.ALLOWED, "Local vision analysis"),
+    "model.load": PolicyRule("model.load", ActionDecision.ALLOWED, "Model lifecycle management"),
+    "model.unload": PolicyRule("model.unload", ActionDecision.ALLOWED, "Model lifecycle management"),
     # BLOCKED ACTIONS — sovereignty enforcement
     "send_external": PolicyRule("send_external", ActionDecision.BLOCKED, "SOVEREIGNTY VIOLATION — no external network"),
     "network_request": PolicyRule("network_request", ActionDecision.BLOCKED, "SOVEREIGNTY VIOLATION — no external network"),

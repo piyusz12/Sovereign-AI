@@ -27,6 +27,18 @@ def auth_client(client):
     return client
 
 
+@pytest.fixture(autouse=True)
+def mock_model_inference(monkeypatch):
+    """Ensure fast API testing by mocking live GPU model router inference."""
+    async def _mock_route(*args, **kwargs):
+        return {
+            "response": "Sovereign local verified response.",
+            "metrics": {"tokens_per_sec": 42.0},
+        }
+    from backend.api import routes
+    monkeypatch.setattr(routes.model_router, "route", _mock_route)
+
+
 class TestHealthEndpoints:
     """Test health and sovereignty endpoints."""
 
@@ -170,21 +182,94 @@ class TestAuthEndpoints:
         # First, login to get a token
         login_response = client.post(
             "/api/v1/auth/login",
-            json={"username": "engineer", "password": "eng123"},
+            json={"username": "admin", "password": "admin123"},
         )
+        assert login_response.status_code == 200
         token = login_response.json()["access_token"]
 
         # Then use the token
         response = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
         assert response.status_code == 200
         data = response.json()
-        assert data["username"] == "engineer"
-        assert data["role"] == "engineering"
+        assert data["username"] == "admin"
+        assert data["role"] == "admin"
 
     def test_me_without_token(self, client):
         """GET /auth/me without token returns 401."""
         response = client.get("/api/v1/auth/me")
         assert response.status_code == 401
+
+    def test_signup_new_user(self, client):
+        """POST /auth/signup registers a new user and returns JWT token."""
+        import uuid
+        unique_user = f"user_{uuid.uuid4().hex[:6]}"
+        response = client.post(
+            "/api/v1/auth/signup",
+            json={
+                "username": unique_user,
+                "password": "pass_secure_123",
+                "role": "engineering",
+                "remember_me": True,
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "access_token" in data
+        assert data["user"]["username"] == unique_user
+        assert data["user"]["role"] == "engineering"
+
+    def test_signup_duplicate_username_fails(self, client):
+        """POST /auth/signup fails when username already exists."""
+        response = client.post(
+            "/api/v1/auth/signup",
+            json={
+                "username": "admin",
+                "password": "another_password",
+                "role": "engineering",
+            },
+        )
+        assert response.status_code == 409
+        assert "already exists" in response.json()["detail"]
+
+    def test_login_with_remember_me(self, client):
+        """POST /auth/login with remember_me=True returns valid JWT."""
+        response = client.post(
+            "/api/v1/auth/login",
+            json={
+                "username": "admin",
+                "password": "admin123",
+                "remember_me": True,
+            },
+        )
+        assert response.status_code == 200
+        assert "access_token" in response.json()
+
+    def test_signup_all_system_roles(self, client):
+        """POST /auth/signup works for all 6 system roles with proper departments."""
+        import uuid
+        roles = [
+            ("admin", "all"),
+            ("engineering", "engineering"),
+            ("finance", "finance"),
+            ("operations", "operations"),
+            ("procurement", "procurement"),
+            ("hr", "hr"),
+        ]
+        for role, expected_dept in roles:
+            uname = f"u_{role}_{uuid.uuid4().hex[:5]}"
+            res = client.post(
+                "/api/v1/auth/signup",
+                json={
+                    "username": uname,
+                    "password": "role_password_123",
+                    "role": role,
+                },
+            )
+            assert res.status_code == 200
+            data = res.json()
+            assert data["user"]["role"] == role
+            assert data["user"]["department"] == expected_dept
+            assert "access_token" in data
 
 
 class TestAdminEndpoints:

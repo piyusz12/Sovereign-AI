@@ -20,7 +20,7 @@ export function CommandBar() {
   const [isExpanded, setIsExpanded] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const { runDemoMission } = useMissionStore();
+  const { createMission } = useMissionStore();
   const { updateRouting } = useAppStore();
 
   const handleExecute = () => {
@@ -49,29 +49,14 @@ export function CommandBar() {
       general: { task: 'General Reasoning', model: 'Qwen3-14B', reason: 'General-purpose reasoning' },
     };
     const route = routingMap[detectedType] || routingMap.general;
-    // For demo purposes, always run the demo pipeline simulation
-    // In production, this would call the real backend API
     updateRouting({
       task_type: route.task,
       selected_model: route.model,
       reason: route.reason,
     });
 
-    // Run demo simulation
-    runDemoMission();
-
-    setCommand('');
-    setAttachments([]);
-    setIsExpanded(false);
-  };
-
-  const handleDemo = () => {
-    updateRouting({
-      task_type: 'Document Reasoning',
-      selected_model: 'Qwen3-14B',
-      reason: 'High reasoning requirement for document analysis',
-    });
-    runDemoMission();
+    // Create a real mission
+    createMission(command.trim(), detectedType, attachments);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -162,18 +147,6 @@ export function CommandBar() {
           <div className="flex items-center gap-1.5 mt-0.5">
             {isExpanded && (
               <>
-                <button
-                  onClick={handleDemo}
-                  className="px-2.5 py-1.5 rounded-md text-[10px] font-semibold tracking-wider transition-colors"
-                  style={{
-                    backgroundColor: 'var(--color-info-muted)',
-                    border: '1px solid var(--color-info-border)',
-                    color: 'var(--color-info)',
-                  }}
-                  title="Load demo mission"
-                >
-                  DEMO
-                </button>
                 <button
                   className="px-2.5 py-1.5 rounded-md text-[10px] font-semibold tracking-wider transition-colors"
                   style={{

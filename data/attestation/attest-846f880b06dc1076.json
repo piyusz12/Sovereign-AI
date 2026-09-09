@@ -1,0 +1,32 @@
+{
+  "report_id": "attest-846f880b06dc1076",
+  "nonce": "21612dec4039513f1f7ad065bdb91efa76e470472ebea49e0070459f960aa035",
+  "status": "VERIFIED",
+  "tee_type": "AMD SEV-SNP",
+  "measurement": {
+    "tee_technology": "AMD SEV-SNP",
+    "launch_digest": "55c27cba9be152d62f1ad0cbafe879f6f004cc9bb80c06f0ddf983e9ace4d951c5335a2097afa5a413fb824ff49f9876",
+    "kernel_hash": "8ae505487015aeb8c7d0a04a7c7171042fa48d10e25df0e51cf9f71e81d1dc17bf1f84f27f2605d3d6935d5d3aa82f81",
+    "initrd_hash": "8640cb119b58dd975ea87d1b494d7fb2a8d9fec55d38bd2325781dc7da02687bccf615c42878b91fa155a40f42724519",
+    "rootfs_hash": "083e6375862267ac9ae10ea33d97a5bdb87c41d3384d9c07fa57445a556d48005a20f2ecfb161156f5226d3cceb2e78e",
+    "kernel_cli_hash": "a7f2d52115b637278c439cea5c1cf38cf0d7d6fda800bcedc398520ca57979847dbd5d00f8bb59b9e7c8cbeb9df54081",
+    "tcb_version": "01.51.04-SEV-SNP",
+    "policy_flags": 196608,
+    "enclave_public_key": "/OLuRK5M31Pi8HdTSF9/BgSijCmljzbxkphC5jk066g=",
+    "chip_id": "ac9549163dfdb7bf6f77b1b3952a7744",
+    "measurement_timestamp": "2026-09-09T08:46:58.561727+00:00"
+  },
+  "vcek_signature": "DB+/udspsg2gRNc0Vp5tqKkwPnhYkmmujpV4Geka6iTGIy+5rmgBiyxKx7lLKKvvX0FNRF9WQ0VLX1AzODRfQ0VSVF9DSEFJTg==",
+  "signature_algorithm": "ECDSA-SHA384 (P-384 curve)",
+  "signing_authority": "AMD KDS (Key Distribution Service) / Versioned Chip Endorsement Key",
+  "hardware_verified": true,
+  "verified_at": "2026-09-09T08:46:58.561744+00:00",
+  "verification_details": {
+    "tcb_status": "UP_TO_DATE",
+    "memory_encryption": "HARDWARE_ACTIVE (AES-XTS-128 / SEV-SNP)",
+    "nested_paging_protection": "ENFORCED",
+    "hypervisor_isolation": "ZERO_PLAINTEXT_EXPOSURE",
+    "kernel_hash_matched": true,
+    "rootfs_hash_matched": true
+  }
+}

@@ -27,7 +27,8 @@ FirewallDecision FastSecurityFirewall::evaluate(const std::string& action, const
     if (action == "read_file" || action == "write_file" || action == "list_files" ||
         action == "search_documents" || action == "calculate" || action == "run_python" ||
         action == "create_docx" || action == "create_xlsx" || action == "create_pptx" ||
-        action == "inspect_image" || action == "sandbox.execute" || action == "ai.chat") {
+        action == "inspect_image" || action == "sandbox.execute" || action == "ai.chat" ||
+        action == "model.load" || action == "model.unload" || action == "load_model" || action == "unload_model") {
         return {
             ActionPolicy::ALLOW,
             action.c_str(),

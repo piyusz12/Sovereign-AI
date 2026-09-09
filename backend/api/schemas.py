@@ -31,6 +31,7 @@ class ModelName(str, Enum):
     QWEN3_14B = "qwen3-14b"
     QWEN25_CODER_7B = "qwen2.5-coder-7b"
     QWEN3_VL_8B = "qwen3-vl-8b"
+    LLAMA32_VISION = "llama3.2-vision:latest"
 
 
 class UserRole(str, Enum):

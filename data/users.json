@@ -1,0 +1,205 @@
+[
+  {
+    "username": "admin",
+    "hashed_password": "$2b$12$JHVi/RhLM1C.4knwLnG3VuXmsvx0.f8XB9JbdxW.9iUDJK1u9o1ha",
+    "role": "admin",
+    "department": "all",
+    "disabled": false
+  },
+  {
+    "username": "newdev_test",
+    "hashed_password": "$2b$12$oo/TXqKsaLWQ1XlPh9gJHe8Mnk1Pn2uFGW5R8YzLtgO..rKL7yDqe",
+    "role": "engineering",
+    "department": "engineering",
+    "disabled": false
+  },
+  {
+    "username": "user_e8ca9b",
+    "hashed_password": "$2b$12$GvJKiU6RdzyZRhtxyo239.U5aCMi/wojZNXB2Bm0USKLcL1TJybpi",
+    "role": "engineering",
+    "department": "engineering",
+    "disabled": false
+  },
+  {
+    "username": "user_1be455",
+    "hashed_password": "$2b$12$L9y2vB7/vkod9OJGbh.5z.BV/YhICqOZTTxg7LLJUZSLkssdikGZm",
+    "role": "engineering",
+    "department": "engineering",
+    "disabled": false
+  },
+  {
+    "username": "user_c622d0",
+    "hashed_password": "$2b$12$Q9gZSLhtQG8ZDhMfcIWxjeLx3i1DP73thRU0uGhFkSqOCoRdHMRUm",
+    "role": "engineering",
+    "department": "engineering",
+    "disabled": false
+  },
+  {
+    "username": "engineer1",
+    "hashed_password": "$2b$12$ht6SAYQZrOPeg2X2fRiGieGN6jWslaXhxmH0f7eQBjyPSIE4qjbFa",
+    "role": "engineering",
+    "department": "engineering",
+    "disabled": false
+  },
+  {
+    "username": "user_ddb14d",
+    "hashed_password": "$2b$12$92V4IFzFim.o0Rdonc3yoe2L2ZVptJTfm0Lx9gdKQky7mENvuVHsG",
+    "role": "engineering",
+    "department": "engineering",
+    "disabled": false
+  },
+  {
+    "username": "u_admin_e23e9",
+    "hashed_password": "$2b$12$Adop1FB3MDhEq7u0drIAFeOk1oBrM5mOwsAK/.2T6ouLZnEgKh6K2",
+    "role": "admin",
+    "department": "all",
+    "disabled": false
+  },
+  {
+    "username": "u_engineering_78e5a",
+    "hashed_password": "$2b$12$kuMDWhTVgeVCFQ4oUt4RP.PV4PXUWg6JDfDGlJQrQbY/CjXDpW/H2",
+    "role": "engineering",
+    "department": "engineering",
+    "disabled": false
+  },
+  {
+    "username": "u_finance_05dbb",
+    "hashed_password": "$2b$12$AXoZyfr49SbwaGLEIfxG9es21rcy8yuec5BPP7/b8dsdwvEGzTDuq",
+    "role": "finance",
+    "department": "finance",
+    "disabled": false
+  },
+  {
+    "username": "u_operations_6aa9e",
+    "hashed_password": "$2b$12$mLUhvi0Jx8HN58bdWTAH3.sOs0XfVArETG6m7XIs0GEUMhNXyqVcm",
+    "role": "operations",
+    "department": "operations",
+    "disabled": false
+  },
+  {
+    "username": "u_procurement_12c8a",
+    "hashed_password": "$2b$12$Z1RB2WsT1RiYaCiHJEWwH.yjCzjWI8N1l1ajF86uPzHTBK.BNasLC",
+    "role": "procurement",
+    "department": "procurement",
+    "disabled": false
+  },
+  {
+    "username": "u_hr_9e439",
+    "hashed_password": "$2b$12$dDDrLCRX4XY7Kp6UT4rN9u/mCW84fEN2k21c0f4/Ycp8/tmLLLOLy",
+    "role": "hr",
+    "department": "hr",
+    "disabled": false
+  },
+  {
+    "username": "user_7d51c1",
+    "hashed_password": "$2b$12$gdT7afQZlqtrKseTTtm1wu.GhaxBL8yo1Q2rJrZsXTKvU7XYu4.he",
+    "role": "engineering",
+    "department": "engineering",
+    "disabled": false
+  },
+  {
+    "username": "u_admin_96291",
+    "hashed_password": "$2b$12$lQu/.ouGkP9q0NRLTa3oOej5tLabxGHvnDvsI59IdJWbweYMufP4i",
+    "role": "admin",
+    "department": "all",
+    "disabled": false
+  },
+  {
+    "username": "u_engineering_27afa",
+    "hashed_password": "$2b$12$RQPJ1aLUzkHo/qSvBvSEw.PjGwkDzSsiWv7q08wIHEqjSUSLG2i.2",
+    "role": "engineering",
+    "department": "engineering",
+    "disabled": false
+  },
+  {
+    "username": "u_finance_b39d7",
+    "hashed_password": "$2b$12$o2lqqCUtt638Wn25hM9bgOpIVt084BKWACEvZcP6pHtJpdR3MWk26",
+    "role": "finance",
+    "department": "finance",
+    "disabled": false
+  },
+  {
+    "username": "u_operations_63f16",
+    "hashed_password": "$2b$12$6nuZd4i5YgAzWWns1VeTkODd828Scl2A.3SNpy7HgP/8tLVhzCG/y",
+    "role": "operations",
+    "department": "operations",
+    "disabled": false
+  },
+  {
+    "username": "u_procurement_25bbc",
+    "hashed_password": "$2b$12$Tqb/f4scFGUuhxs/k.d2H.B5SPZ11gtO4/9fF71lR4sH9XWh9mmnu",
+    "role": "procurement",
+    "department": "procurement",
+    "disabled": false
+  },
+  {
+    "username": "u_hr_da963",
+    "hashed_password": "$2b$12$w8iLXEhnLIPxvWrlVIOEKOXcSggNjmEmr8y4BVv67DDvE1Ima9kYe",
+    "role": "hr",
+    "department": "hr",
+    "disabled": false
+  },
+  {
+    "username": "testadmin",
+    "hashed_password": "$2b$12$BCZFBEOGv0CjwYa88/FT3uOiDygICrKgPT8TJMML/BfHmMaMWPM7e",
+    "role": "admin",
+    "department": "all",
+    "disabled": false
+  },
+  {
+    "username": "admin1234",
+    "hashed_password": "$2b$12$yHTvmBLc//7oemCPu4DFtuILuz.biuoDug1U0sVMZmzVEGKENtT7m",
+    "role": "admin",
+    "department": "all",
+    "disabled": false
+  },
+  {
+    "username": "user_9f7184",
+    "hashed_password": "$2b$12$DK2/jOXzokCGEYoqN92oxu0udzfXSuRq.UVmNd/7urQRTwyyOq4wq",
+    "role": "engineering",
+    "department": "engineering",
+    "disabled": false
+  },
+  {
+    "username": "u_admin_9a566",
+    "hashed_password": "$2b$12$5b/s0FqGisJVGpqWeQnQxusHRWJEgMBdDMDKPbCjGBjE.q6HUtnqy",
+    "role": "admin",
+    "department": "all",
+    "disabled": false
+  },
+  {
+    "username": "u_engineering_68d71",
+    "hashed_password": "$2b$12$xOfx4aOJuNWqpxiYPJENFOVhOFazdNxN.ysXaj8lgEvcOvMihuYkO",
+    "role": "engineering",
+    "department": "engineering",
+    "disabled": false
+  },
+  {
+    "username": "u_finance_49f81",
+    "hashed_password": "$2b$12$m358VNgmthSVigQiVcfnou/ec7VHunUA9bRL8OJS.36SUsl5HJO4a",
+    "role": "finance",
+    "department": "finance",
+    "disabled": false
+  },
+  {
+    "username": "u_operations_d1da8",
+    "hashed_password": "$2b$12$UkPz02Lc45Rv/PEHvhz9euoV6qh35ieHJgAqc/ThaR84p.qYfJ7DS",
+    "role": "operations",
+    "department": "operations",
+    "disabled": false
+  },
+  {
+    "username": "u_procurement_a056a",
+    "hashed_password": "$2b$12$dtweKUJIDC0/2XhJQ3KtMuE5M3/6DPjp9poR5Nsl1CnKcun1bD0GK",
+    "role": "procurement",
+    "department": "procurement",
+    "disabled": false
+  },
+  {
+    "username": "u_hr_016dd",
+    "hashed_password": "$2b$12$JrLX.vVg7letiwtqFmWd3OcO9NCJYWXU5SfEzZaTw1dUHpaOL1DQa",
+    "role": "hr",
+    "department": "hr",
+    "disabled": false
+  }
+]

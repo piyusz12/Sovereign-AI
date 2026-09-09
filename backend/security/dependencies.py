@@ -9,13 +9,14 @@ from typing import Callable
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 
-from backend.security.auth import decode_token, DEMO_USERS
+from backend.security.auth import decode_token, user_store
 from backend.security.rbac import rbac_enforcer
 from backend.audit import audit_service, current_user_id, current_role
 
 logger = logging.getLogger("sovereign.security.dependencies")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 
 
 def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
@@ -30,7 +31,7 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    user_data = DEMO_USERS.get(token_data.username)
+    user_data = user_store.get_user(token_data.username)
     if not user_data or user_data.get("disabled", False):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -41,6 +42,20 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
     current_user_id.set(user_data["username"])
     current_role.set(user_data["role"])
 
+    return user_data
+
+
+def get_optional_current_user(token: str | None = Depends(oauth2_scheme_optional)) -> dict | None:
+    """Return current user if token present and valid, otherwise None."""
+    if not token:
+        return None
+    token_data = decode_token(token)
+    if not token_data or not token_data.username:
+        return None
+    user_data = user_store.get_user(token_data.username)
+    if user_data:
+        current_user_id.set(user_data["username"])
+        current_role.set(user_data["role"])
     return user_data
 
 

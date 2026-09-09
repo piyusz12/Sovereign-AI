@@ -89,6 +89,15 @@ class TestTaskClassifier:
         assert result.confidence <= 0.5
 
 
+class TestModelRouter:
+    """Test explicit model IDs resolve to the configured Qwen profiles."""
+
+    def test_qwen_model_ids_resolve_to_categories(self, router):
+        assert router._category_for_model(ModelName.QWEN3_14B) == "reasoning"
+        assert router._category_for_model(ModelName.QWEN25_CODER_7B) == "coding"
+        assert router._category_for_model(ModelName.QWEN3_VL_8B) == "vision"
+
+
 class TestWeightedScoring:
     """Test that weighted scoring produces correct rankings."""
 

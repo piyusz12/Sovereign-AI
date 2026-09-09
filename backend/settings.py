@@ -44,8 +44,14 @@ class Settings(BaseSettings):
     inference_output_reserve_tokens: int = 1024
     inference_max_agent_iterations: int = 5
     inference_max_tool_calls: int = 10
-    inference_max_retrieval_retries: int = 2
     inference_keep_alive: str = "5m"
+    # --- CPU Computational Power & Hybrid Execution ---
+    # Equal CPU computational power sharing alongside RTX 4060 GPU
+    cpu_compute_threads: int = 8
+    cpu_worker_concurrency: int = 8
+    enable_cpu_hybrid_offload: bool = True
+    enable_simd_avx2: bool = True
+    compute_mode: str = "hybrid_balanced"
 
     # --- vLLM (Phase 25+) ---
     vllm_base_url: str = "http://localhost:8000"

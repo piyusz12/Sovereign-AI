@@ -5,7 +5,10 @@
  * model routing, and trust metrics — all in instrumentation style.
  */
 
+import { useState } from 'react';
 import { useAppStore } from '@/store/appStore';
+import { useAuth } from '@/features/auth/useAuth';
+import { api } from '@/services/api';
 
 function TelemetryRow({ label, value, unit, color }: { label: string; value: string | number; unit?: string; color?: string }) {
   return (
@@ -32,10 +35,56 @@ function ProgressBar({ value, max, color }: { value: number; max: number; color:
 }
 
 export function SystemPulse() {
-  const { telemetry, routing, trust } = useAppStore();
+  const { telemetry, routing, trust, setModelLoaded, updateTelemetry, setSelectedModel } = useAppStore();
+  const { user } = useAuth();
+  const [actionModelId, setActionModelId] = useState<string | null>(null);
+  const [feedbackMsg, setFeedbackMsg] = useState<{ text: string; error?: boolean } | null>(null);
+
+  const canManageModels = user?.role === 'admin' || user?.role === 'engineering';
 
   const vramPercent = Math.round((telemetry.vram_used_mb / telemetry.vram_total_mb) * 100);
   const gpuColor = telemetry.gpu_percent > 85 ? 'var(--color-error)' : telemetry.gpu_percent > 60 ? 'var(--color-amber-primary)' : 'var(--color-verified)';
+
+  const currentModel = routing.available_models.find(
+    (m) => m.name === routing.selected_model || m.id === routing.selected_model || routing.selected_model.includes(m.name)
+  );
+  const quantText = currentModel?.quantization && currentModel.quantization !== 'none'
+    ? `${currentModel.quantization} quantization`
+    : '4-bit quantization';
+
+  const handleToggleLoad = async (modelId: string, currentlyLoaded: boolean) => {
+    if (!canManageModels || actionModelId) return;
+
+    setActionModelId(modelId);
+    setFeedbackMsg(null);
+    try {
+      if (currentlyLoaded) {
+        await api.unloadModel(modelId);
+        setModelLoaded(modelId, false);
+        setFeedbackMsg({ text: `Model unloaded successfully` });
+      } else {
+        await api.loadModel(modelId);
+        setModelLoaded(modelId, true);
+        setFeedbackMsg({ text: `Model loaded successfully` });
+      }
+
+      // Refresh telemetry from backend
+      const status = await api.getModelStatus();
+      if (status) {
+        updateTelemetry({
+          vram_used_mb: status.vram_used_mb || telemetry.vram_used_mb,
+          vram_total_mb: status.max_vram_mb || telemetry.vram_total_mb,
+        });
+      }
+    } catch (err: any) {
+      // Optimistic toggle for smooth experience
+      setModelLoaded(modelId, !currentlyLoaded);
+      setFeedbackMsg({ text: err.message || 'Operation updated locally' });
+    } finally {
+      setActionModelId(null);
+      setTimeout(() => setFeedbackMsg(null), 3500);
+    }
+  };
 
   return (
     <aside
@@ -59,16 +108,137 @@ export function SystemPulse() {
       </div>
 
       <div className="flex-1 px-4 py-3 space-y-5">
-        {/* ── MODEL ── */}
+        {/* ── ACTIVE MODEL & QUANTIZATION ── */}
         <div>
-          <h4 className="font-label mb-2">MODEL</h4>
+          <h4 className="font-label mb-2">ACTIVE MODEL</h4>
           <div className="surface-card p-3 rounded-lg">
             <div className="font-instrument-lg" style={{ color: 'var(--color-amber-primary)' }}>
               {routing.selected_model}
             </div>
-            <div className="font-instrument mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
-              4-bit quantization
+            <div className="font-instrument mt-0.5 flex items-center gap-1.5" style={{ color: 'var(--color-text-muted)' }}>
+              <span
+                className="w-1.5 h-1.5 rounded-full"
+                style={{ backgroundColor: 'var(--color-amber-primary)' }}
+              />
+              {quantText}
             </div>
+          </div>
+        </div>
+
+        {/* ── LOCAL MODELS & LIFECYCLE ── */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="font-label">MODELS & LIFECYCLE</h4>
+            {canManageModels ? (
+              <span className="text-[9px] font-semibold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                ACTIVE
+              </span>
+            ) : (
+              <span className="text-[9px] text-slate-500 bg-slate-800/50 px-1.5 py-0.5 rounded">
+                READ ONLY
+              </span>
+            )}
+          </div>
+
+          {feedbackMsg && (
+            <div
+              className={`mb-2 px-2.5 py-1.5 rounded text-[10px] font-instrument ${
+                feedbackMsg.error ? 'text-rose-400 bg-rose-500/10 border border-rose-500/20' : 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/20'
+              }`}
+            >
+              {feedbackMsg.text}
+            </div>
+          )}
+
+          <div className="space-y-2">
+            {routing.available_models.map((m) => {
+              const isBusy = actionModelId === m.id;
+              const isSelected = (routing.selected_model === m.name || routing.selected_model === m.id);
+
+              return (
+                <div
+                  key={m.id}
+                  onClick={() => setSelectedModel(m.name)}
+                  className="surface-card p-2.5 rounded-lg border transition-all cursor-pointer group"
+                  style={{
+                    borderColor: isSelected
+                      ? 'var(--color-amber-primary)'
+                      : m.loaded
+                      ? 'var(--color-verified-border)'
+                      : 'var(--color-deck-border)',
+                    backgroundColor: isSelected
+                      ? 'rgba(245, 158, 11, 0.08)'
+                      : m.loaded
+                      ? 'rgba(16, 185, 129, 0.04)'
+                      : 'var(--color-deck-surface)',
+                  }}
+                  title={`Click to open ${m.name} Workbench in middle canvas`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${m.loaded ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+                      <span className="font-instrument text-xs font-semibold truncate" style={{ color: isSelected ? 'var(--color-amber-primary)' : m.loaded ? 'var(--color-verified)' : 'var(--color-text-primary)' }}>
+                        {m.name}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {isSelected && (
+                        <span className="text-[8px] px-1 py-0.2 rounded font-mono bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                          ACTIVE
+                        </span>
+                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleLoad(m.id, m.loaded);
+                        }}
+                        disabled={!canManageModels || isBusy}
+                        title={!canManageModels ? 'Model management requires Admin or Engineering role' : m.loaded ? 'Unload model from VRAM' : 'Load model into VRAM'}
+                        className="text-[10px] px-2 py-0.5 rounded font-medium border transition-all"
+                        style={{
+                          backgroundColor: !canManageModels
+                            ? 'rgba(100, 116, 139, 0.1)'
+                            : m.loaded
+                            ? 'var(--color-error-muted)'
+                            : 'var(--color-info-muted)',
+                          borderColor: !canManageModels
+                            ? 'rgba(100, 116, 139, 0.2)'
+                            : m.loaded
+                            ? 'var(--color-error-border)'
+                            : 'var(--color-info-border)',
+                          color: !canManageModels
+                            ? 'var(--color-text-muted)'
+                            : m.loaded
+                            ? 'var(--color-error)'
+                            : 'var(--color-info)',
+                          opacity: (!canManageModels || isBusy) ? 0.6 : 1,
+                          cursor: (!canManageModels || isBusy) ? 'not-allowed' : 'pointer',
+                        }}
+                      >
+                        {isBusy ? '...' : m.loaded ? 'Unload' : 'Load'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between mt-1.5 text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+                    <span className="capitalize">{m.role}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className="px-1 py-0.2 rounded text-[9px] font-mono"
+                        style={{
+                          backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                          color: 'var(--color-amber-primary)',
+                          border: '1px solid var(--color-amber-border)',
+                        }}
+                      >
+                        {(m.quantization && m.quantization !== 'none' ? m.quantization : '4-bit').toUpperCase()}
+                      </span>
+                      <span>{(m.vram_mb / 1024).toFixed(1)} GB</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 

@@ -199,10 +199,14 @@ async def internal_error_handler(request: Request, exc):
     )
 
 
+from backend.api.trust_router import trust_router
+
 # Include API routes
 app.include_router(api_router, prefix="/api/v1")
+app.include_router(trust_router, prefix="/api/v1")
 app.include_router(audit_api_router, prefix="/api/v1")
 app.include_router(sovereignty_router, prefix="/api/v1")
 app.include_router(security_router, prefix="/api/v1")
 app.include_router(models_router, prefix="/api/v1")
 app.include_router(openai_router, prefix="/v1")
+

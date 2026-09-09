@@ -52,13 +52,14 @@ export interface ModelRouting {
     role: string;
     loaded: boolean;
     vram_mb: number;
+    quantization?: string;
   }>;
 }
 
 export interface UIState {
   rightPanelVisible: boolean;
   leftPanelCollapsed: boolean;
-  activeView: 'command' | 'missions' | 'knowledge' | 'artifacts' | 'trust' | 'system';
+  activeView: 'command' | 'missions' | 'knowledge' | 'artifacts' | 'reasoning' | 'coding' | 'vision' | 'trust' | 'system' | 'attestation' | 'mcp' | 'mantic' | 'cyberscan' | 'rag';
 }
 
 export interface SystemStatus {
@@ -82,6 +83,7 @@ export interface AppStore {
 
   // Auth
   currentUser: { username: string; role: string; department: string } | null;
+  availableWorkflows: string[];
 
   // Actions
   updateTelemetry: (data: Partial<SystemTelemetry>) => void;
@@ -94,6 +96,9 @@ export interface AppStore {
   toggleRightPanel: () => void;
   toggleLeftPanel: () => void;
   setCurrentUser: (user: AppStore['currentUser']) => void;
+  setAvailableWorkflows: (workflows: string[]) => void;
+  setModelLoaded: (modelId: string, loaded: boolean) => void;
+  setSelectedModel: (modelName: string) => void;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -130,9 +135,9 @@ export const useAppStore = create<AppStore>((set) => ({
     selected_model: 'Qwen3-14B',
     reason: 'Awaiting mission',
     available_models: [
-      { id: 'qwen3-14b', name: 'Qwen3-14B', role: 'reasoning', loaded: true, vram_mb: 5200 },
-      { id: 'qwen2.5-coder-7b', name: 'Qwen2.5-Coder-7B', role: 'coding', loaded: false, vram_mb: 4700 },
-      { id: 'qwen3-vl-8b', name: 'Qwen3-VL-8B', role: 'vision', loaded: false, vram_mb: 7800 },
+      { id: 'qwen3-14b', name: 'Qwen3-14B', role: 'reasoning', loaded: true, vram_mb: 5200, quantization: '4-bit' },
+      { id: 'qwen2.5-coder-7b', name: 'Qwen2.5-Coder-7B', role: 'coding', loaded: false, vram_mb: 4700, quantization: '4-bit' },
+      { id: 'qwen3-vl-8b', name: 'Qwen3-VL-8B', role: 'vision', loaded: false, vram_mb: 7800, quantization: '4-bit' },
     ],
   },
 
@@ -163,7 +168,9 @@ export const useAppStore = create<AppStore>((set) => ({
     activeView: 'command',
   },
 
-  currentUser: { username: 'admin', role: 'admin', department: 'engineering' },
+  currentUser: null,
+
+  availableWorkflows: [],
 
   // Actions
   updateTelemetry: (data) =>
@@ -200,4 +207,33 @@ export const useAppStore = create<AppStore>((set) => ({
     set((s) => ({ ui: { ...s.ui, leftPanelCollapsed: !s.ui.leftPanelCollapsed } })),
 
   setCurrentUser: (user) => set({ currentUser: user }),
+
+  setAvailableWorkflows: (workflows) => set({ availableWorkflows: workflows }),
+
+  setModelLoaded: (modelId, loaded) =>
+    set((s) => ({
+      routing: {
+        ...s.routing,
+        available_models: s.routing.available_models.map((m) =>
+          m.id === modelId ||
+          m.name.toLowerCase() === modelId.toLowerCase() ||
+          m.id.toLowerCase().includes(modelId.toLowerCase()) ||
+          modelId.toLowerCase().includes(m.id.toLowerCase())
+            ? { ...m, loaded }
+            : m
+        ),
+      },
+    })),
+
+  setSelectedModel: (modelName) =>
+    set((s) => ({
+      routing: {
+        ...s.routing,
+        selected_model: modelName,
+      },
+      ui: {
+        ...s.ui,
+        activeView: 'system',
+      },
+    })),
 }));

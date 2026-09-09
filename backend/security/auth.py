@@ -5,12 +5,17 @@ JWT-based local authentication. No external auth providers.
 
 Uses bcrypt directly instead of passlib to avoid compatibility issues
 with bcrypt >= 4.1 and Python 3.13+.
+
+User data is persisted in a JSON file (data/users.json) instead of
+hard-coded demo users.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Optional
 
 import bcrypt
@@ -57,51 +62,126 @@ class User(BaseModel):
     disabled: bool = False
 
 
-# Demo users for prototype
-DEMO_USERS: dict[str, dict] = {
-    "admin": {
+# ── Persistent User Store ──────────────────────────────────────────────────────
+
+USERS_FILE = Path(settings.data_dir) / "users.json"
+
+# Default users seeded on first boot
+_SEED_USERS: list[dict] = [
+    {
         "username": "admin",
-        "hashed_password": _hash_password("admin123"),
+        "password": "admin123",
         "role": "admin",
         "department": "all",
-        "disabled": False,
     },
-    "engineer": {
-        "username": "engineer",
-        "hashed_password": _hash_password("eng123"),
-        "role": "engineering",
-        "department": "engineering",
-        "disabled": False,
-    },
-    "finance_user": {
-        "username": "finance_user",
-        "hashed_password": _hash_password("fin123"),
-        "role": "finance",
-        "department": "finance",
-        "disabled": False,
-    },
-    "ops_user": {
-        "username": "ops_user",
-        "hashed_password": _hash_password("ops123"),
-        "role": "operations",
-        "department": "operations",
-        "disabled": False,
-    },
-    "hr_user": {
-        "username": "hr_user",
-        "hashed_password": _hash_password("hr123"),
-        "role": "hr",
-        "department": "hr",
-        "disabled": False,
-    },
-    "procurement_user": {
-        "username": "procurement_user",
-        "hashed_password": _hash_password("proc123"),
-        "role": "procurement",
-        "department": "procurement",
-        "disabled": False,
-    },
-}
+]
+
+
+class UserStore:
+    """
+    JSON-file-backed user store.
+
+    On first run, seeds default admin credentials.
+    Thread-safety: writes are serialized through _save(), which is acceptable
+    for a single-process API server.  For multi-process deployments, swap
+    this for a proper DB.
+    """
+
+    def __init__(self, path: Path = USERS_FILE):
+        self._path = path
+        self._users: dict[str, dict] = {}
+        self._load()
+
+    # ── Private ────────────────────────────────────────────────────────────
+
+    def _load(self) -> None:
+        """Load users from disk, seeding defaults if the file doesn't exist."""
+        if self._path.exists():
+            try:
+                data = json.loads(self._path.read_text(encoding="utf-8"))
+                self._users = {u["username"]: u for u in data}
+                logger.info("Loaded %d users from %s", len(self._users), self._path)
+                return
+            except Exception as exc:
+                logger.warning("Failed to load users file: %s — reseeding", exc)
+
+        # First run — seed
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        for seed in _SEED_USERS:
+            self._users[seed["username"]] = {
+                "username": seed["username"],
+                "hashed_password": _hash_password(seed["password"]),
+                "role": seed["role"],
+                "department": seed["department"],
+                "disabled": False,
+            }
+        self._save()
+        logger.info("Seeded %d default users to %s", len(self._users), self._path)
+
+    def _save(self) -> None:
+        """Persist current users to disk."""
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._path.write_text(
+            json.dumps(list(self._users.values()), indent=2),
+            encoding="utf-8",
+        )
+
+    # ── Public API ─────────────────────────────────────────────────────────
+
+    def get_user(self, username: str) -> Optional[dict]:
+        """Return user dict or None."""
+        return self._users.get(username)
+
+    def create_user(
+        self,
+        username: str,
+        password: str,
+        role: str,
+        department: str,
+    ) -> dict:
+        """Create a new user. Raises ValueError if username exists."""
+        if username in self._users:
+            raise ValueError(f"User '{username}' already exists")
+
+        user_data = {
+            "username": username,
+            "hashed_password": _hash_password(password),
+            "role": role,
+            "department": department,
+            "disabled": False,
+        }
+        self._users[username] = user_data
+        self._save()
+        logger.info("Created user '%s' with role '%s'", username, role)
+        return user_data
+
+    def delete_user(self, username: str) -> bool:
+        """Delete a user. Returns True if deleted, False if not found."""
+        if username not in self._users:
+            return False
+        del self._users[username]
+        self._save()
+        logger.info("Deleted user '%s'", username)
+        return True
+
+    def list_users(self) -> list[dict]:
+        """Return all users (without hashed passwords)."""
+        return [
+            {
+                "username": u["username"],
+                "role": u["role"],
+                "department": u["department"],
+                "disabled": u.get("disabled", False),
+            }
+            for u in self._users.values()
+        ]
+
+
+# Global singleton
+user_store = UserStore()
+
+
+# ── Token helpers ──────────────────────────────────────────────────────────────
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
@@ -122,8 +202,11 @@ def decode_token(token: str) -> Optional[TokenData]:
 
 
 def authenticate_user(username: str, password: str) -> Optional[User]:
-    user_data = DEMO_USERS.get(username)
+    """Authenticate against the persistent user store."""
+    user_data = user_store.get_user(username)
     if not user_data:
+        return None
+    if user_data.get("disabled", False):
         return None
     if not verify_password(password, user_data["hashed_password"]):
         return None
@@ -131,5 +214,5 @@ def authenticate_user(username: str, password: str) -> Optional[User]:
         username=user_data["username"],
         role=user_data["role"],
         department=user_data["department"],
-        disabled=user_data["disabled"],
+        disabled=user_data.get("disabled", False),
     )

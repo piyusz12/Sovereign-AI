@@ -8,8 +8,10 @@ import {
   X,
   RefreshCw,
   Eye,
+  Trash2,
 } from 'lucide-react';
 import { api } from '@/services/api';
+import { useAuth } from '@/features/auth/useAuth';
 
 interface AuditItem {
   id: string;
@@ -91,12 +93,16 @@ export default function Audit() {
   const [selectedLog, setSelectedLog] = useState<AuditItem | null>(null);
   const [page, setPage] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+  const [clearError, setClearError] = useState<string | null>(null);
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
 
   const fetchEvents = async () => {
     setIsLoading(true);
     try {
       const res = await api.getAuditEvents(50, page * 10);
-      if (res && res.events && res.events.length > 0) {
+      if (res && res.events) {
         const mapped: AuditItem[] = res.events.map((e: any) => ({
           id: e.id ? String(e.id) : `aud-${Math.random().toString().slice(2, 6)}`,
           action: e.action || 'system.event',
@@ -115,6 +121,22 @@ export default function Audit() {
       // Keep initial rich logs
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleClearLogs = async () => {
+    if (!isAdmin || isClearing) return;
+    if (!window.confirm('Clear all audit logs? This action cannot be undone.')) return;
+    setIsClearing(true);
+    setClearError(null);
+    try {
+      await api.clearAuditEvents();
+      setLogs([]);
+      setPage(0);
+    } catch (error) {
+      setClearError(error instanceof Error ? error.message : 'Failed to clear audit logs');
+    } finally {
+      setIsClearing(false);
     }
   };
 
@@ -185,8 +207,20 @@ export default function Audit() {
               <Download className="w-3.5 h-3.5 mr-1.5" />
               Export JSON
             </button>
+            {isAdmin && (
+              <button
+                onClick={handleClearLogs}
+                disabled={isClearing}
+                className="flex items-center px-4 py-2 bg-rose-950/40 hover:bg-rose-900/60 disabled:opacity-50 text-rose-300 text-xs font-medium rounded-lg transition-colors border border-rose-500/40"
+                title="Admin-only: permanently delete all audit logs"
+              >
+                <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                {isClearing ? 'Clearing...' : 'Clear Logs'}
+              </button>
+            )}
           </div>
         </div>
+        {clearError && <div className="mb-4 text-xs text-rose-300">{clearError}</div>}
 
         {/* Search & Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">

@@ -18,6 +18,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { useMissionStore } from '@/store/missionStore';
+import { useAppStore } from '@/store/appStore';
 import { PipelineView } from './PipelineView';
 import { EvidencePanel } from './EvidencePanel';
 import { MissionTrace } from './MissionTrace';
@@ -43,7 +44,7 @@ const missionStatusConfig: Record<string, { color: string; bg: string; label: st
 export function MissionCanvas() {
   const [activeTab, setActiveTab] = useState<CanvasTab>('pipeline');
   const mission = useMissionStore((s) => s.getActiveMission());
-  const { runDemoMission } = useMissionStore();
+  const { currentUser, availableWorkflows } = useAppStore();
 
   // No active mission — show welcome
   if (!mission) {
@@ -70,22 +71,36 @@ export function MissionCanvas() {
             All inference runs locally. Zero data egress.
           </p>
 
-          <div className="flex items-center justify-center gap-3">
-            <button
-              onClick={runDemoMission}
-              className="px-5 py-2.5 rounded-lg text-xs font-bold tracking-wider transition-all hover:scale-[1.02]"
+          {/* Available workflows for this role */}
+          {currentUser && availableWorkflows.length > 0 && (
+            <div
+              className="inline-flex flex-wrap items-center justify-center gap-2 px-4 py-3 rounded-lg mb-4"
               style={{
-                backgroundColor: 'var(--color-amber-primary)',
-                color: 'var(--color-deck-void)',
-                border: '1px solid var(--color-amber-hover)',
+                backgroundColor: 'var(--color-deck-surface)',
+                border: '1px solid var(--color-deck-border)',
               }}
             >
-              LAUNCH DEMO MISSION
-            </button>
-          </div>
+              <span className="text-[10px] tracking-widest font-semibold w-full mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                YOUR WORKFLOWS
+              </span>
+              {availableWorkflows.map((wf) => (
+                <span
+                  key={wf}
+                  className="px-2 py-0.5 rounded text-[10px] font-semibold tracking-wider uppercase"
+                  style={{
+                    backgroundColor: 'var(--color-amber-muted)',
+                    border: '1px solid var(--color-amber-border)',
+                    color: 'var(--color-amber-primary)',
+                  }}
+                >
+                  {wf.replace('_', ' ')}
+                </span>
+              ))}
+            </div>
+          )}
 
           <p className="text-[10px] mt-4" style={{ color: 'var(--color-text-dim)' }}>
-            Or type a command in the bar below to start a new mission
+            Type a command in the bar below to start a new mission
           </p>
 
           {/* Quick stats */}

@@ -15,7 +15,7 @@ from backend.audit.context import current_trace_id
 logger = logging.getLogger("sovereign.workflows.engine")
 
 class WorkflowEngine:
-    """Manages execution of flagship demo workflows."""
+    """Manages execution of flagship workflows."""
     
     def __init__(self):
         # We will import workflows dynamically or bind them in registry
