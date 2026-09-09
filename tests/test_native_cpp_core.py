@@ -20,6 +20,11 @@ requires_native_dll = pytest.mark.skipif(
     reason="Requires compiled sovereign_core.dll (run cpp-core/build.bat with MSVC)"
 )
 
+requires_native_or_win32 = pytest.mark.skipif(
+    not (cpp_core.is_available() or cpp_core.is_win32_native_available()),
+    reason="Requires compiled sovereign_core.dll or Windows native DXGI / Job Objects"
+)
+
 
 @requires_native_dll
 def test_native_core_initialized():
@@ -27,7 +32,7 @@ def test_native_core_initialized():
     assert cpp_core.is_available() is True, "64-bit sovereign_core.dll must be initialized"
 
 
-@requires_native_dll
+@requires_native_or_win32
 def test_dxgi_hardware_query():
     """Verify direct DXGI hardware query of dedicated GPU VRAM and physical RAM."""
     hw = cpp_core.query_hardware()
@@ -94,7 +99,7 @@ def test_simd_batch_topk_benchmark():
     assert math.isclose(topk_simd[0][1], topk_py[0][1], rel_tol=1e-4)
 
 
-@requires_native_dll
+@requires_native_or_win32
 def test_win32_job_enclave_containment():
     """Verify that native Win32 Job Object sandbox tracks memory and CPU of subprocess."""
     enclave = cpp_core.create_sandbox_enclave(max_memory_mb=256, max_processes=4, cpu_rate_percent=90)

@@ -39,16 +39,130 @@ POLICY_NAMES = [
 ]
 
 
+# Win32 Type Definitions for direct OS C-ABI calls
+if os.name == "nt":
+    from ctypes import wintypes
+
+    class _GUID(ctypes.Structure):
+        _fields_ = [
+            ("Data1", ctypes.c_ulong),
+            ("Data2", ctypes.c_ushort),
+            ("Data3", ctypes.c_ushort),
+            ("Data4", ctypes.c_ubyte * 8),
+        ]
+
+    class _DXGI_ADAPTER_DESC(ctypes.Structure):
+        _fields_ = [
+            ("Description", wintypes.WCHAR * 128),
+            ("VendorId", wintypes.UINT),
+            ("DeviceId", wintypes.UINT),
+            ("SubSysId", wintypes.UINT),
+            ("Revision", wintypes.UINT),
+            ("DedicatedVideoMemory", ctypes.c_size_t),
+            ("DedicatedSystemMemory", ctypes.c_size_t),
+            ("SharedSystemMemory", ctypes.c_size_t),
+            ("AdapterLuid_LowPart", wintypes.DWORD),
+            ("AdapterLuid_HighPart", wintypes.LONG),
+        ]
+
+    class _MEMORYSTATUSEX(ctypes.Structure):
+        _fields_ = [
+            ("dwLength", wintypes.DWORD),
+            ("dwMemoryLoad", wintypes.DWORD),
+            ("ullTotalPhys", ctypes.c_uint64),
+            ("ullAvailPhys", ctypes.c_uint64),
+            ("ullTotalPageFile", ctypes.c_uint64),
+            ("ullAvailPageFile", ctypes.c_uint64),
+            ("ullTotalVirtual", ctypes.c_uint64),
+            ("ullAvailVirtual", ctypes.c_uint64),
+            ("ullAvailExtendedVirtual", ctypes.c_uint64),
+        ]
+
+    class _IO_COUNTERS(ctypes.Structure):
+        _fields_ = [
+            ("ReadOperationCount", ctypes.c_uint64),
+            ("WriteOperationCount", ctypes.c_uint64),
+            ("OtherOperationCount", ctypes.c_uint64),
+            ("ReadTransferCount", ctypes.c_uint64),
+            ("WriteTransferCount", ctypes.c_uint64),
+            ("OtherTransferCount", ctypes.c_uint64),
+        ]
+
+    class _JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
+        _fields_ = [
+            ("PerProcessUserTimeLimit", ctypes.c_int64),
+            ("PerJobUserTimeLimit", ctypes.c_int64),
+            ("LimitFlags", wintypes.DWORD),
+            ("MinimumWorkingSetSize", ctypes.c_size_t),
+            ("MaximumWorkingSetSize", ctypes.c_size_t),
+            ("ActiveProcessLimit", wintypes.DWORD),
+            ("Affinity", ctypes.c_size_t),
+            ("PriorityClass", wintypes.DWORD),
+            ("SchedulingClass", wintypes.DWORD),
+        ]
+
+    class _JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
+        _fields_ = [
+            ("BasicLimitInformation", _JOBOBJECT_BASIC_LIMIT_INFORMATION),
+            ("IoInfo", _IO_COUNTERS),
+            ("ProcessMemoryLimit", ctypes.c_size_t),
+            ("JobMemoryLimit", ctypes.c_size_t),
+            ("PeakProcessMemoryUsed", ctypes.c_size_t),
+            ("PeakJobMemoryUsed", ctypes.c_size_t),
+        ]
+
+    class _JOBOBJECT_BASIC_ACCOUNTING_INFORMATION(ctypes.Structure):
+        _fields_ = [
+            ("TotalUserTime", ctypes.c_int64),
+            ("TotalKernelTime", ctypes.c_int64),
+            ("ThisPeriodTotalUserTime", ctypes.c_int64),
+            ("ThisPeriodTotalKernelTime", ctypes.c_int64),
+            ("TotalPageFaultCount", wintypes.DWORD),
+            ("TotalProcesses", wintypes.DWORD),
+            ("ActiveProcesses", wintypes.DWORD),
+            ("TotalTerminatedProcesses", wintypes.DWORD),
+        ]
+
+    class _JOBOBJECT_CPU_RATE_CONTROL_INFORMATION(ctypes.Structure):
+        _fields_ = [
+            ("ControlFlags", wintypes.DWORD),
+            ("CpuRate", wintypes.DWORD),
+        ]
+
+
 class NativeSandboxEnclave:
     """Wrapper around a native Win32 Job Object sandbox handle."""
 
-    def __init__(self, core: "CppCore", handle: Any, max_memory_bytes: int):
+    def __init__(
+        self,
+        core: "CppCore",
+        handle: Any,
+        max_memory_bytes: int,
+        is_direct_win32: bool = False,
+    ):
         self._core = core
         self._handle = handle
         self._max_memory_bytes = max_memory_bytes
+        self._is_direct_win32 = is_direct_win32
 
     def assign_process(self, process_handle_or_pid: Any) -> bool:
-        if not self._handle or not self._core._dll:
+        if not self._handle:
+            return False
+
+        if self._is_direct_win32:
+            kernel32 = ctypes.windll.kernel32
+            if isinstance(process_handle_or_pid, int):
+                PROCESS_SET_QUOTA = 0x0100
+                PROCESS_TERMINATE = 0x0001
+                h_proc = kernel32.OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, False, process_handle_or_pid)
+                if not h_proc:
+                    return False
+                success = bool(kernel32.AssignProcessToJobObject(self._handle, h_proc))
+                kernel32.CloseHandle(h_proc)
+                return success
+            return bool(kernel32.AssignProcessToJobObject(self._handle, process_handle_or_pid))
+
+        if not self._core._dll:
             return False
 
         # If integer PID is passed on Windows, open process handle with required rights
@@ -66,8 +180,31 @@ class NativeSandboxEnclave:
         return bool(self._core._dll.sovereign_sandbox_assign(self._handle, ctypes.c_void_p(process_handle_or_pid)))
 
     def get_stats(self) -> Dict[str, Any]:
-        if not self._handle or not self._core._dll:
-            return {"peak_memory_bytes": 0, "cpu_time_us": 0, "active_processes": 0}
+        if not self._handle:
+            return {"peak_memory_bytes": 0, "peak_memory_mb": 0.0, "cpu_time_us": 0, "active_processes": 0}
+
+        if self._is_direct_win32:
+            kernel32 = ctypes.windll.kernel32
+            query_ext = _JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
+            res_ext = kernel32.QueryInformationJobObject(
+                self._handle, 9, ctypes.byref(query_ext), ctypes.sizeof(query_ext), None
+            )
+            query_basic = _JOBOBJECT_BASIC_ACCOUNTING_INFORMATION()
+            res_basic = kernel32.QueryInformationJobObject(
+                self._handle, 1, ctypes.byref(query_basic), ctypes.sizeof(query_basic), None
+            )
+            peak_bytes = query_ext.PeakJobMemoryUsed if res_ext else 0
+            cpu_us = ((query_basic.TotalKernelTime + query_basic.TotalUserTime) // 10) if res_basic else 0
+            active_p = query_basic.ActiveProcesses if res_basic else 0
+            return {
+                "peak_memory_bytes": peak_bytes,
+                "peak_memory_mb": round(peak_bytes / (1024 * 1024), 2),
+                "cpu_time_us": cpu_us,
+                "active_processes": active_p,
+            }
+
+        if not self._core._dll:
+            return {"peak_memory_bytes": 0, "peak_memory_mb": 0.0, "cpu_time_us": 0, "active_processes": 0}
 
         peak_mem = ctypes.c_size_t(0)
         cpu_time = ctypes.c_uint64(0)
@@ -86,16 +223,23 @@ class NativeSandboxEnclave:
                 "cpu_time_us": cpu_time.value,
                 "active_processes": procs.value,
             }
-        return {"peak_memory_bytes": 0, "cpu_time_us": 0, "active_processes": 0}
+        return {"peak_memory_bytes": 0, "peak_memory_mb": 0.0, "cpu_time_us": 0, "active_processes": 0}
 
     def terminate(self, exit_code: int = 1) -> bool:
-        if not self._handle or not self._core._dll:
+        if not self._handle:
+            return False
+        if self._is_direct_win32:
+            return bool(ctypes.windll.kernel32.TerminateJobObject(self._handle, exit_code))
+        if not self._core._dll:
             return False
         return bool(self._core._dll.sovereign_sandbox_terminate(self._handle, ctypes.c_uint32(exit_code)))
 
     def close(self):
-        if self._handle and self._core._dll:
-            self._core._dll.sovereign_sandbox_close(self._handle)
+        if self._handle:
+            if self._is_direct_win32:
+                ctypes.windll.kernel32.CloseHandle(self._handle)
+            elif self._core._dll:
+                self._core._dll.sovereign_sandbox_close(self._handle)
             self._handle = None
 
     def __enter__(self):
@@ -259,9 +403,120 @@ class CppCore:
     def is_available(self) -> bool:
         return self._available
 
+    def is_win32_native_available(self) -> bool:
+        """Returns True if Windows native DXGI and Win32 Job Object capabilities are active."""
+        return os.name == "nt"
+
     # ─────────────────────────────────────────────────────────────────────────
     # Hardware Control
     # ─────────────────────────────────────────────────────────────────────────
+
+    def _query_dxgi_win32(self) -> Optional[Dict[str, Any]]:
+        """
+        Direct hardware query via DirectX Graphics Infrastructure (DXGI) and Win32 APIs.
+        Queries the real discrete GPU (VRAM and shared memory) and physical RAM with microsecond latency.
+        """
+        if os.name != "nt":
+            return None
+
+        try:
+            kernel32 = ctypes.windll.kernel32
+            dxgi = ctypes.windll.dxgi
+
+            # 1. System RAM via GlobalMemoryStatusEx
+            mem_status = _MEMORYSTATUSEX()
+            mem_status.dwLength = ctypes.sizeof(_MEMORYSTATUSEX)
+            total_ram_mb = 0
+            avail_ram_mb = 0
+            if kernel32.GlobalMemoryStatusEx(ctypes.byref(mem_status)):
+                total_ram_mb = int(mem_status.ullTotalPhys // (1024 * 1024))
+                avail_ram_mb = int(mem_status.ullAvailPhys // (1024 * 1024))
+
+            # 2. CPU Cores
+            cpu_cores = os.cpu_count() or 8
+
+            # 3. GPU VRAM & Model via DXGI COM interface
+            iid_factory = _GUID(
+                0x7B7166EC,
+                0x21C7,
+                0x44AE,
+                (ctypes.c_ubyte * 8)(0xB2, 0x1A, 0xC9, 0xAE, 0x32, 0x1A, 0xE3, 0x69),
+            )
+            p_factory = ctypes.c_void_p()
+            hr = dxgi.CreateDXGIFactory(ctypes.byref(iid_factory), ctypes.byref(p_factory))
+            if hr != 0 or not p_factory.value:
+                return None
+
+            best_vram = -1
+            best_shared = 0
+            best_name = ""
+
+            try:
+                vtbl_factory = ctypes.cast(
+                    p_factory, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))
+                ).contents
+                EnumAdapters_proto = ctypes.WINFUNCTYPE(
+                    ctypes.c_long,
+                    ctypes.c_void_p,
+                    wintypes.UINT,
+                    ctypes.POINTER(ctypes.c_void_p),
+                )
+                EnumAdapters = EnumAdapters_proto(vtbl_factory[7])
+
+                adapter_idx = 0
+                while True:
+                    p_adapter = ctypes.c_void_p()
+                    if EnumAdapters(p_factory, adapter_idx, ctypes.byref(p_adapter)) != 0:
+                        break
+
+                    vtbl_adapter = ctypes.cast(
+                        p_adapter, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))
+                    ).contents
+                    GetDesc_proto = ctypes.WINFUNCTYPE(
+                        ctypes.c_long,
+                        ctypes.c_void_p,
+                        ctypes.POINTER(_DXGI_ADAPTER_DESC),
+                    )
+                    GetDesc = GetDesc_proto(vtbl_adapter[8])
+                    Release_proto = ctypes.WINFUNCTYPE(ctypes.c_ulong, ctypes.c_void_p)
+                    Release = Release_proto(vtbl_adapter[2])
+
+                    desc = _DXGI_ADAPTER_DESC()
+                    if GetDesc(p_adapter, ctypes.byref(desc)) == 0:
+                        vram = desc.DedicatedVideoMemory
+                        # Select discrete GPU with largest dedicated VRAM
+                        if vram > best_vram or not best_name:
+                            best_vram = vram
+                            best_shared = desc.SharedSystemMemory
+                            best_name = desc.Description
+
+                    Release(p_adapter)
+                    adapter_idx += 1
+
+            finally:
+                vtbl_factory = ctypes.cast(
+                    p_factory, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))
+                ).contents
+                Release_proto = ctypes.WINFUNCTYPE(ctypes.c_ulong, ctypes.c_void_p)
+                Release_factory = Release_proto(vtbl_factory[2])
+                Release_factory(p_factory)
+
+            vram_mb = int(best_vram // (1024 * 1024)) if best_vram > 0 else 0
+            shared_mb = int(best_shared // (1024 * 1024)) if best_shared > 0 else 0
+
+            return {
+                "source": "native_cpp_dxgi",
+                "gpu_name": best_name or "DirectX Graphics Device",
+                "gpu_vram_mb": vram_mb,
+                "shared_vram_mb": shared_mb,
+                "system_ram_mb": total_ram_mb,
+                "available_ram_mb": avail_ram_mb,
+                "cpu_cores": cpu_cores,
+                "is_discrete_gpu": vram_mb > 512,
+            }
+        except Exception as exc:
+            logger.debug("Native Win32 DXGI query failed: %s", exc)
+            return None
 
     def query_hardware(self) -> Dict[str, Any]:
         """
@@ -298,13 +553,18 @@ class CppCore:
                     "is_discrete_gpu": vram_mb > 512,
                 }
 
-        # Python Fallback
+        # Native DXGI query on Windows when DLL is uncompiled
+        win32_hw = self._query_dxgi_win32()
+        if win32_hw is not None:
+            return win32_hw
+
+        # Python Fallback for non-Windows platforms
         import psutil
         ram_mb = int(psutil.virtual_memory().total / (1024 * 1024))
         return {
             "source": "python_psutil_fallback",
-            "gpu_name": "Local RTX GPU (8GB)",
-            "gpu_vram_mb": 8192,
+            "gpu_name": "Local Discrete GPU",
+            "gpu_vram_mb": 6144,
             "shared_vram_mb": 4096,
             "system_ram_mb": ram_mb,
             "available_ram_mb": int(psutil.virtual_memory().available / (1024 * 1024)),
@@ -315,6 +575,68 @@ class CppCore:
     # ─────────────────────────────────────────────────────────────────────────
     # Sandbox Enclave (Win32 Job Objects)
     # ─────────────────────────────────────────────────────────────────────────
+
+    def _create_win32_job_enclave(
+        self,
+        max_memory_mb: int = 512,
+        max_processes: int = 8,
+        cpu_rate_percent: int = 80,
+    ) -> Optional[NativeSandboxEnclave]:
+        """Creates a Win32 Job Object sandbox enclave via direct OS C-ABI calls."""
+        if os.name != "nt":
+            return None
+
+        try:
+            kernel32 = ctypes.windll.kernel32
+            h_job = kernel32.CreateJobObjectW(None, None)
+            if not h_job:
+                return None
+
+            mem_bytes = max_memory_mb * 1024 * 1024
+            jeli = _JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
+
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
+            JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION = 0x0400
+            JOB_OBJECT_LIMIT_PROCESS_MEMORY = 0x0100
+            JOB_OBJECT_LIMIT_JOB_MEMORY = 0x0200
+            JOB_OBJECT_LIMIT_ACTIVE_PROCESS = 0x0008
+
+            flags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION
+            if max_memory_mb > 0:
+                flags |= JOB_OBJECT_LIMIT_PROCESS_MEMORY | JOB_OBJECT_LIMIT_JOB_MEMORY
+                jeli.ProcessMemoryLimit = mem_bytes
+                jeli.JobMemoryLimit = mem_bytes
+
+            if max_processes > 0:
+                flags |= JOB_OBJECT_LIMIT_ACTIVE_PROCESS
+                jeli.BasicLimitInformation.ActiveProcessLimit = max_processes
+
+            jeli.BasicLimitInformation.LimitFlags = flags
+            JobObjectExtendedLimitInformation = 9
+            kernel32.SetInformationJobObject(
+                h_job,
+                JobObjectExtendedLimitInformation,
+                ctypes.byref(jeli),
+                ctypes.sizeof(jeli),
+            )
+
+            # CPU Rate Control
+            if 0 < cpu_rate_percent <= 100:
+                cpu_info = _JOBOBJECT_CPU_RATE_CONTROL_INFORMATION()
+                cpu_info.ControlFlags = 0x1 | 0x4  # ENABLE | HARD_CAP
+                cpu_info.CpuRate = cpu_rate_percent * 100
+                JobObjectCpuRateControlInformation = 15
+                kernel32.SetInformationJobObject(
+                    h_job,
+                    JobObjectCpuRateControlInformation,
+                    ctypes.byref(cpu_info),
+                    ctypes.sizeof(cpu_info),
+                )
+
+            return NativeSandboxEnclave(self, h_job, mem_bytes, is_direct_win32=True)
+        except Exception as exc:
+            logger.debug("Failed to create Win32 Job Object sandbox: %s", exc)
+            return None
 
     def create_sandbox_enclave(
         self,
@@ -335,7 +657,11 @@ class CppCore:
                 ctypes.c_uint32(cpu_rate_percent),
             )
             if handle:
-                return NativeSandboxEnclave(self, handle, mem_bytes)
+                return NativeSandboxEnclave(self, handle, mem_bytes, is_direct_win32=False)
+
+        if os.name == "nt":
+            return self._create_win32_job_enclave(max_memory_mb, max_processes, cpu_rate_percent)
+
         return None
 
     # ─────────────────────────────────────────────────────────────────────────
