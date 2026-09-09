@@ -101,18 +101,28 @@ class ModelRouter:
         """Get the appropriate provider for a model."""
         return get_provider(model.provider.value, model.base_url)
 
-    def _category_for_model(self, model_id: str) -> str:
+    def _category_for_model(self, model_id: Optional[str]) -> Optional[str]:
         """
         Resolve a public model ID, provider tag, or category alias to its registry category.
+        Never raises ValueError — falls back gracefully to default category or None for dynamic routing.
 
         Supports:
+        - Auto/dynamic keywords: None, "", "auto", "default", "undefined", "dynamic" -> returns None (triggers classification)
         - Direct category names: "reasoning", "coding", "vision"
-        - Full model IDs: "qwen2.5-coder:7b", "qwen3-vl:8b"
+        - Full model IDs: "qwen2.5-coder:7b", "qwen3-vl:8b", "qwen3:14b"
         - Base model prefixes: "qwen2.5-coder", "qwen3-vl", "qwen3"
-        - Common aliases: "coder", "vl", "code"
+        - Common aliases: "coder", "vl", "code", "chat", "deepseek"
+        - Unrecognized names: falls back to default reasoning category with a warning
         """
-        normalized = model_id.value if hasattr(model_id, "value") else str(model_id)
-        normalized = normalized.strip().lower()
+        if not model_id:
+            return None
+
+        raw = model_id.value if hasattr(model_id, "value") else str(model_id)
+        normalized = raw.strip().lower()
+
+        # Dynamic / auto keywords imply no forced category (let classifier decide)
+        if normalized in ("", "none", "null", "auto", "default", "undefined", "dynamic", "any"):
+            return None
 
         # 1. Exact match against category key
         if normalized in self.registry.models:
@@ -124,31 +134,36 @@ class ModelRouter:
                 model.model_id.lower(),
                 model.name.lower(),
                 model.name.lower().replace(" (ollama)", ""),
+                category.lower(),
             }:
                 return category
 
         # 3. Base model tag match (e.g., 'qwen2.5-coder' matching 'qwen2.5-coder:7b')
-        base_normalized = normalized.split(":")[0]
+        base_normalized = normalized.split(":")[0].replace("-", "").replace(".", "")
         for category, model in self.registry.models.items():
-            model_base = model.model_id.lower().split(":")[0]
-            if base_normalized == model_base or normalized == model_base:
+            model_base = model.model_id.lower().split(":")[0].replace("-", "").replace(".", "")
+            if base_normalized == model_base:
                 return category
 
         # 4. Keyword heuristic fallback
-        if any(kw in normalized for kw in ("coder", "code", "coding")):
+        if any(kw in normalized for kw in ("coder", "code", "coding", "python", "script", "deepseek")):
             if "coding" in self.registry.models:
                 return "coding"
-        if any(kw in normalized for kw in ("vision", "vl", "visual", "image")):
+        if any(kw in normalized for kw in ("vision", "vl", "visual", "image", "ocr", "p&id", "llava")):
             if "vision" in self.registry.models:
                 return "vision"
-        if any(kw in normalized for kw in ("reason", "chat", "general")):
+        if any(kw in normalized for kw in ("reason", "chat", "general", "qwen", "llama", "deep", "instruct")):
             if "reasoning" in self.registry.models:
                 return "reasoning"
 
-        raise ValueError(
-            f"Unknown model or category: '{model_id}'. "
-            f"Available categories: {list(self.registry.models.keys())}"
+        # 5. Safe graceful fallback without raising ValueError
+        default_cat = getattr(self.policy, "default_category", "reasoning") or "reasoning"
+        logger.warning(
+            "Unrecognized model or category '%s'. Gracefully falling back to default '%s'.",
+            model_id,
+            default_cat,
         )
+        return default_cat if default_cat in self.registry.models else "reasoning"
 
     # ── Classify Only (Phase 6) ───────────────────────────────────────────
 
@@ -192,6 +207,8 @@ class ModelRouter:
 
     # ── Route (Phase 5 + 6 upgrade) ───────────────────────────────────────
 
+    # ── Route (Phase 5 + 6 upgrade) ───────────────────────────────────────
+
     async def route(
         self,
         user_input: str,
@@ -204,13 +221,13 @@ class ModelRouter:
         session_id: Optional[str] = None,
     ) -> dict[str, Any]:
         """
-        Route a user request to the appropriate model (non-streaming).
+        Route a user request to the appropriate model with crash-proof auto-failover (non-streaming).
 
         Args:
             user_input: The user's message
             has_image: Whether the request includes an image (deprecated, use images)
             images: List of base64 encoded images
-            force_model: Force a specific model category (bypasses classifier)
+            force_model: Force a specific model category (or None/auto for dynamic routing)
             system_prompt: Optional system prompt override
             temperature: Generation temperature
             max_tokens: Maximum tokens to generate
@@ -223,16 +240,17 @@ class ModelRouter:
         if images:
             has_image = True
 
-        # Step 1: Classify (or force)
-        if force_model:
+        # Step 1: Classify (or force if an explicit category was requested)
+        forced_category = self._category_for_model(force_model) if force_model else None
+        if forced_category:
             classification = self.classifier.classify(user_input, has_image)
-            category = self._category_for_model(force_model)
+            category = forced_category
             routing_decision = RoutingDecision(
                 task_type=classification.task_type.value,
                 model_category=category,
                 model_name=classification.model.value,
                 confidence=1.0,
-                reason=f"Model forced to '{force_model}'",
+                reason=f"Model forced to category '{category}' (input: '{force_model}')",
             )
         else:
             routing_decision = await self.classify_only(user_input, has_image)
@@ -245,41 +263,132 @@ class ModelRouter:
             routing_decision.confidence,
         )
 
-        # Step 2: Load model (triggers VRAM swap if needed)
-        model = await self.registry.load_model(category)
-
-        # Step 3: Resolve system prompt
-        effective_prompt = self._resolve_system_prompt(
-            system_prompt, category, model, routing_decision.task_type
+        # Dynamic fallback topology: pairs each category with a resilient local backup
+        fallback_map = {
+            "coding": "reasoning",
+            "vision": "reasoning",
+            "reasoning": "coding",
+        }
+        secondary_category = fallback_map.get(
+            category, "reasoning" if category != "reasoning" else "coding"
         )
 
-        # Step 4: Send to model via provider
-        prompt_build = self._build_prompt(user_input, effective_prompt, session_id, images=images)
-        messages = prompt_build.messages
-        provider = self._get_provider(model)
-
+        # Step 2: Load model with dynamic failover
+        model = None
+        load_error = None
         try:
-            submitted_at = time.perf_counter()
-            execution_started_at = submitted_at
+            model = await self.registry.load_model(category)
+        except Exception as e:
+            load_error = e
+            logger.warning(
+                "Primary category '%s' failed to load: %s. Initiating dynamic failover to '%s'...",
+                category,
+                e,
+                secondary_category,
+            )
+            try:
+                model = await self.registry.load_model(secondary_category)
+                category = secondary_category
+                routing_decision.fallback_occurred = True
+                routing_decision.fallback_reason = f"Primary category load failed ({load_error}). Switched to {category}."
+                routing_decision.model_category = category
+                routing_decision.model_name = model.model_id
+            except Exception as e2:
+                logger.error("Secondary category '%s' also failed to load: %s", secondary_category, e2)
+                load_error = f"{load_error} | Failover load failed: {e2}"
 
-            async def run_inference():
-                nonlocal execution_started_at
-                execution_started_at = time.perf_counter()
-                return await provider.chat(
-                    model_id=model.model_id,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    keep_alive=model.keep_alive,
+        # Step 3 & 4: Resolve prompt and send to model with dynamic inference failover
+        chat_response = None
+        inference_error = None
+        prompt_build = None
+        submitted_at = time.perf_counter()
+        execution_started_at = submitted_at
+
+        if model:
+            effective_prompt = self._resolve_system_prompt(
+                system_prompt, category, model, routing_decision.task_type
+            )
+            prompt_build = self._build_prompt(user_input, effective_prompt, session_id, images=images)
+            provider = self._get_provider(model)
+
+            try:
+                submitted_at = time.perf_counter()
+                execution_started_at = submitted_at
+
+                async def run_inference():
+                    nonlocal execution_started_at
+                    execution_started_at = time.perf_counter()
+                    return await provider.chat(
+                        model_id=model.model_id,
+                        messages=prompt_build.messages,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        keep_alive=model.keep_alive,
+                    )
+
+                chat_response = await gpu_scheduler.schedule(
+                    task_type=f"inference-{category}", priority=1, coro=run_inference()
+                )
+            except Exception as err:
+                inference_error = err
+                logger.warning(
+                    "Primary inference with category '%s' (%s) failed: %s. Initiating crash-proof failover to '%s'...",
+                    category,
+                    model.model_id,
+                    err,
+                    secondary_category,
                 )
 
-            chat_response = await gpu_scheduler.schedule(
-                task_type=f"inference-{category}", priority=1, coro=run_inference()
-            )
+                # Dynamic failover to secondary model if primary model failed during inference
+                if secondary_category != category:
+                    try:
+                        backup_model = await self.registry.load_model(secondary_category)
+                        backup_prompt = self._resolve_system_prompt(
+                            system_prompt, secondary_category, backup_model, routing_decision.task_type
+                        )
+                        backup_images = images if secondary_category == "vision" else None
+                        backup_build = self._build_prompt(
+                            user_input, backup_prompt, session_id, images=backup_images
+                        )
+                        backup_provider = self._get_provider(backup_model)
+
+                        async def run_backup_inference():
+                            nonlocal execution_started_at
+                            execution_started_at = time.perf_counter()
+                            return await backup_provider.chat(
+                                model_id=backup_model.model_id,
+                                messages=backup_build.messages,
+                                temperature=temperature,
+                                max_tokens=max_tokens,
+                                keep_alive=backup_model.keep_alive,
+                            )
+
+                        chat_response = await gpu_scheduler.schedule(
+                            task_type=f"inference-{secondary_category}", priority=2, coro=run_backup_inference()
+                        )
+                        model = backup_model
+                        category = secondary_category
+                        prompt_build = backup_build
+                        routing_decision.fallback_occurred = True
+                        routing_decision.fallback_reason = (
+                            f"Primary model error ({inference_error}). "
+                            f"Crash-proof dynamic router auto-recovered using {backup_model.model_id}."
+                        )
+                        routing_decision.model_category = category
+                        routing_decision.model_name = backup_model.model_id
+                        logger.info("Crash-proof dynamic failover succeeded with %s", backup_model.model_id)
+                        inference_error = None
+                    except Exception as backup_err:
+                        logger.error("Secondary failover also failed: %s", backup_err)
+                        inference_error = f"{inference_error} | Failover inference failed: {backup_err}"
+
+        duration_ms = round((time.time() - start) * 1000, 2)
+
+        if chat_response:
             response_text = chat_response.content
             m = chat_response.metrics
             queue_wait_ms = round((execution_started_at - submitted_at) * 1000, 2)
-            prompt_tokens = m.prompt_eval_count or prompt_build.budget.used_tokens
+            prompt_tokens = m.prompt_eval_count or (prompt_build.budget.used_tokens if prompt_build else 0)
             itl_ms = round(1000 / m.tokens_per_sec, 2) if m.tokens_per_sec else 0.0
             metrics = {
                 "tokens_per_sec": m.tokens_per_sec,
@@ -289,12 +398,14 @@ class ModelRouter:
                 "eval_count": m.eval_count,
                 "prompt_eval_count": prompt_tokens,
                 "queue_wait_ms": queue_wait_ms,
-                "prefix_key": prompt_build.prefix_key,
-                "context_budget": prompt_build.budget.__dict__,
+                "prefix_key": prompt_build.prefix_key if prompt_build else "",
+                "context_budget": prompt_build.budget.__dict__ if prompt_build else {},
+                "fallback_occurred": routing_decision.fallback_occurred,
+                "fallback_reason": routing_decision.fallback_reason,
             }
             inference_telemetry.record(
                 new_metric(
-                    model=model.model_id,
+                    model=model.model_id if model else "unknown",
                     task_type=routing_decision.task_type,
                     ttft_ms=m.first_token_ms,
                     itl_ms=itl_ms,
@@ -303,22 +414,24 @@ class ModelRouter:
                     output_tokens=m.eval_count,
                     queue_wait_ms=queue_wait_ms,
                     total_duration_ms=m.total_duration_ms,
-                    prefix_key=prompt_build.prefix_key,
+                    prefix_key=prompt_build.prefix_key if prompt_build else "",
                 )
             )
-        except ConnectionError as e:
-            logger.error("Provider connection failed: %s", e)
-            response_text = f"[Error: {e}]"
-            metrics = {}
-        except Exception as e:
-            logger.error("Inference failed: %s", e)
-            response_text = f"[Error calling model: {e}]"
-            metrics = {}
-
-        duration_ms = round((time.time() - start) * 1000, 2)
+        else:
+            err_msg = str(inference_error or load_error or "Inference backend unavailable")
+            logger.warning("Local inference failed across all available local models: %s", err_msg)
+            response_text = (
+                f"[Sovereign AI] Local model inference could not be completed ({err_msg}). "
+                f"Air-gapped security boundary maintained (zero external egress)."
+            )
+            metrics = {
+                "error": err_msg,
+                "fallback_occurred": True,
+                "fallback_reason": err_msg,
+            }
 
         # Save to session history if applicable and successful
-        if session_id and response_text and not response_text.startswith("[Error"):
+        if session_id and response_text and not response_text.startswith("[Sovereign AI] Local model inference could not be completed"):
             self.sessions.add_message(session_id, "user", user_input)
             self.sessions.add_message(session_id, "assistant", response_text)
 
@@ -332,9 +445,9 @@ class ModelRouter:
             },
             "routing_decision": routing_decision.to_dict(),
             "model_used": {
-                "name": model.name,
-                "provider": model.provider.value,
-                "model_id": model.model_id,
+                "name": model.name if model else "Sovereign Local Engine",
+                "provider": model.provider.value if model else "local",
+                "model_id": model.model_id if model else "offline",
                 "category": category,
             },
             "metrics": metrics,
@@ -355,7 +468,7 @@ class ModelRouter:
         session_id: Optional[str] = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """
-        Route a user request with streaming response.
+        Route a user request with crash-proof streaming response.
 
         Yields dicts suitable for SSE:
             {"chunk": "token text", "done": false}
@@ -366,16 +479,17 @@ class ModelRouter:
         if images:
             has_image = True
 
-        # Step 1: Classify
-        if force_model:
+        # Step 1: Classify (or force if explicit)
+        forced_category = self._category_for_model(force_model) if force_model else None
+        if forced_category:
             classification = self.classifier.classify(user_input, has_image)
-            category = self._category_for_model(force_model)
+            category = forced_category
             routing_decision = RoutingDecision(
                 task_type=classification.task_type.value,
                 model_category=category,
                 model_name=classification.model.value,
                 confidence=1.0,
-                reason=f"Model forced to '{force_model}'",
+                reason=f"Model forced to category '{category}' (input: '{force_model}')",
             )
         else:
             routing_decision = await self.classify_only(user_input, has_image)
@@ -387,15 +501,41 @@ class ModelRouter:
             category,
         )
 
-        # Step 2: Load model
-        model = await self.registry.load_model(category)
+        fallback_map = {
+            "coding": "reasoning",
+            "vision": "reasoning",
+            "reasoning": "coding",
+        }
+        secondary_category = fallback_map.get(
+            category, "reasoning" if category != "reasoning" else "coding"
+        )
+
+        # Step 2: Load model with dynamic failover
+        model = None
+        try:
+            model = await self.registry.load_model(category)
+        except Exception as load_err:
+            logger.warning("Streaming primary category '%s' load failed: %s. Attempting failover...", category, load_err)
+            try:
+                model = await self.registry.load_model(secondary_category)
+                category = secondary_category
+                routing_decision.fallback_occurred = True
+                routing_decision.fallback_reason = f"Primary category load failed ({load_err}). Switched to {category}."
+            except Exception as backup_load_err:
+                logger.error("Streaming backup model load failed: %s", backup_load_err)
+                yield {
+                    "chunk": f"[Sovereign AI] Local model offline: {backup_load_err}",
+                    "done": True,
+                    "error": str(backup_load_err),
+                }
+                return
 
         # Step 3: Resolve system prompt
         effective_prompt = self._resolve_system_prompt(
             system_prompt, category, model, routing_decision.task_type
         )
 
-        # Step 4: Stream from provider
+        # Step 4: Stream from provider with fail-safe error handling
         prompt_build = self._build_prompt(user_input, effective_prompt, session_id, images=images)
         messages = prompt_build.messages
         provider = self._get_provider(model)
@@ -462,6 +602,7 @@ class ModelRouter:
                                 "prefix_key": prompt_build.prefix_key,
                                 "context_budget": prompt_build.budget.__dict__,
                                 "duration_ms": duration_ms,
+                                "fallback_occurred": routing_decision.fallback_occurred,
                             },
                         }
 
@@ -477,15 +618,16 @@ class ModelRouter:
                         }
 
         except ConnectionError as e:
+            logger.error("Streaming connection error: %s", e)
             yield {
-                "chunk": f"[Error: {e}]",
+                "chunk": f"[Sovereign AI] Local model connection failed: {e}",
                 "done": True,
                 "error": str(e),
             }
         except Exception as e:
             logger.error("Streaming inference failed: %s", e)
             yield {
-                "chunk": f"[Error: {e}]",
+                "chunk": f"[Sovereign AI] Streaming inference interrupted: {e}",
                 "done": True,
                 "error": str(e),
             }
@@ -501,7 +643,7 @@ class ModelRouter:
         max_tokens: int = 4096,
     ) -> CodeGenerationResult:
         """
-        Generate code using the coder model with specialized system prompt.
+        Generate code using the coder model (with crash-proof failover to reasoning).
 
         Forces the coder model regardless of classification, uses the coding
         system prompt, and extracts structured code blocks from the response.
@@ -542,29 +684,31 @@ class ModelRouter:
             )
 
             response_text = result.get("response", "")
-            if response_text.startswith("[Error calling model:"):
-                raise RuntimeError(response_text)
             model_used = result.get("model_used", {}).get("model_id", "")
             duration_ms = round((time.time() - start) * 1000, 2)
 
             # Extract code blocks
             blocks = extract_code_blocks(response_text)
+            has_valid_blocks = len(blocks) > 0
+            is_offline_msg = response_text.startswith("[Sovereign AI] Local model inference could not be completed")
 
+            is_success = has_valid_blocks and not is_offline_msg
             return CodeGenerationResult(
-                code_blocks=blocks,
+                code_blocks=blocks if has_valid_blocks else [f"# Task: {prompt}\n# Note: Model generation yielded no code block"],
                 raw_response=response_text,
                 model_used=model_used,
                 language=language,
                 duration_ms=duration_ms,
-                success=len(blocks) > 0,
-                error=None if blocks else "No code blocks extracted from model response",
+                success=is_success,
+                error=None if is_success else (result.get("metrics", {}).get("error") or "No executable code block found in response"),
             )
 
         except Exception as e:
             duration_ms = round((time.time() - start) * 1000, 2)
             logger.error("Code generation failed: %s", e)
             return CodeGenerationResult(
-                raw_response="",
+                code_blocks=[f"# Task: {prompt}\n# Execution failed: {e}"],
+                raw_response=f"[Error: {e}]",
                 model_used="",
                 language=language,
                 duration_ms=duration_ms,

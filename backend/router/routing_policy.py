@@ -78,6 +78,10 @@ class RoutingDecision:
     policy_llm_threshold: float = 0.6
     policy_prefer_llm: bool = False
 
+    # Dynamic failover tracking
+    fallback_occurred: bool = False
+    fallback_reason: Optional[str] = None
+
     def to_dict(self) -> dict:
         """Serialize for API response."""
         result = {
@@ -88,6 +92,8 @@ class RoutingDecision:
             "reason": self.reason,
             "used_llm": self.used_llm,
             "total_classification_ms": self.total_classification_ms,
+            "fallback_occurred": self.fallback_occurred,
+            "fallback_reason": self.fallback_reason,
             "policy": {
                 "llm_threshold": self.policy_llm_threshold,
                 "prefer_llm": self.policy_prefer_llm,

@@ -387,3 +387,76 @@ def test_build_messages_with_images(router):
     assert messages[1]["content"] == "What is in this image?"
     assert "images" in messages[1]
     assert messages[1]["images"] == ["base64_string_1", "base64_string_2"]
+
+
+# ── Crash-Proof Dynamic Model Routing Tests ───────────────────────────────────
+
+def test_category_for_model_auto_and_dynamic_keywords(router):
+    """Verify auto/dynamic keywords return None so dynamic classification proceeds."""
+    assert router._category_for_model(None) is None
+    assert router._category_for_model("") is None
+    assert router._category_for_model("auto") is None
+    assert router._category_for_model("default") is None
+    assert router._category_for_model("dynamic") is None
+    assert router._category_for_model("undefined") is None
+
+
+def test_category_for_model_unknown_never_crashes(router):
+    """Verify unknown or unmapped models never raise ValueError and fall back safely."""
+    category = router._category_for_model("completely-unrecognized-model-name-99b")
+    assert category == "reasoning"
+
+
+@pytest.mark.asyncio
+async def test_route_dynamic_failover_when_primary_fails(router):
+    """Verify router automatically fails over to backup model when primary fails."""
+    primary_mock_provider = AsyncMock()
+    primary_mock_provider.chat.side_effect = RuntimeError("Server error '500 Internal Server Error'")
+
+    secondary_mock_provider = AsyncMock()
+    mock_resp = AsyncMock()
+    mock_resp.content = "def calculate_pump_efficiency(): return 0.85"
+    mock_resp.metrics = AsyncMock()
+    mock_resp.metrics.tokens_per_sec = 25.0
+    mock_resp.metrics.first_token_ms = 120.0
+    mock_resp.metrics.total_duration_ms = 400.0
+    mock_resp.metrics.eval_count = 10
+    mock_resp.metrics.prompt_eval_count = 50
+    secondary_mock_provider.chat.return_value = mock_resp
+
+    def mock_get_provider(model):
+        if "coder" in model.model_id:
+            return primary_mock_provider
+        return secondary_mock_provider
+
+    with patch.object(router, "_get_provider", side_effect=mock_get_provider):
+        result = await router.route("Write Python code for centrifugal pump", force_model="coding")
+        assert result["response"] == "def calculate_pump_efficiency(): return 0.85"
+        assert result["routing_decision"]["fallback_occurred"] is True
+        assert "auto-recovered" in result["routing_decision"]["fallback_reason"].lower()
+
+
+@pytest.mark.asyncio
+async def test_generate_code_never_crashes_with_runtime_error(router):
+    """Verify generate_code handles model offline without throwing RuntimeError."""
+    mock_provider = AsyncMock()
+    mock_provider.chat.side_effect = ConnectionError("Connection refused by localhost:11434")
+
+    with patch.object(router, "_get_provider", return_value=mock_provider):
+        result = await router.generate_code("Write a fibonacci sequence in python")
+        assert result.success is False
+        assert len(result.code_blocks) > 0
+        assert "Connection refused" in (result.error or "")
+
+
+@pytest.mark.asyncio
+async def test_route_graceful_when_all_engines_offline(router):
+    """Verify route returns a structured, air-gapped response when all backends are offline."""
+    mock_provider = AsyncMock()
+    mock_provider.chat.side_effect = ConnectionError("All local models offline")
+
+    with patch.object(router, "_get_provider", return_value=mock_provider):
+        result = await router.route("Summarize safety inspection report")
+        assert "[Sovereign AI] Local model inference could not be completed" in result["response"]
+        assert result["metrics"]["fallback_occurred"] is True
+

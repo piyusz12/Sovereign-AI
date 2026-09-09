@@ -10,11 +10,7 @@ import {
   Paperclip,
   X,
   Play,
-  FileCode2,
-  FileSearch,
-  Eye,
   Sparkles,
-  Compass,
   Layers,
 } from 'lucide-react';
 import { useMissionStore, type MissionType } from '@/store/missionStore';
@@ -23,40 +19,13 @@ import { useAppStore } from '@/store/appStore';
 export function CommandBar() {
   const [command, setCommand] = useState('');
   const [attachments, setAttachments] = useState<string[]>([]);
-  const [selectedType, setSelectedType] = useState<MissionType>('general');
+  const [selectedType] = useState<MissionType>('general');
   const [previewMode, setPreviewMode] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { runDemoMission, createMission } = useMissionStore();
   const { updateRouting } = useAppStore();
-
-  const presets = [
-    {
-      id: 'doc',
-      label: 'Doc Audit',
-      type: 'document' as MissionType,
-      icon: FileSearch,
-      text: 'Audit cooling system inspection report and verify safety valve pressure tolerances.',
-      color: 'border-amber-500/30 text-amber-400 bg-amber-500/10 hover:bg-amber-500/20',
-    },
-    {
-      id: 'code',
-      label: 'Code Synthesis',
-      type: 'coding' as MissionType,
-      icon: FileCode2,
-      text: 'Write Python algorithm to calculate centrifugal pump efficiency and generate compliance curves.',
-      color: 'border-cyan-500/30 text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20',
-    },
-    {
-      id: 'vision',
-      label: 'P&ID Vision',
-      type: 'vision' as MissionType,
-      icon: Eye,
-      text: 'Analyze P&ID engineering schematic, identify isolation valves, and trace high-pressure steam line.',
-      color: 'border-purple-500/30 text-purple-400 bg-purple-500/10 hover:bg-purple-500/20',
-    },
-  ];
 
   const handleExecute = () => {
     if (!command.trim()) return;
@@ -98,14 +67,6 @@ export function CommandBar() {
     setCommand('');
     setAttachments([]);
     setPreviewMode(false);
-  };
-
-  const handlePresetSelect = (preset: typeof presets[0]) => {
-    setCommand(preset.text);
-    setSelectedType(preset.type);
-    if (textareaRef.current) {
-      textareaRef.current.focus();
-    }
   };
 
   const handleDemo = () => {
@@ -160,37 +121,6 @@ export function CommandBar() {
         multiple
         className="hidden"
       />
-
-      {/* Quick Action Preset Chips Bar */}
-      <div className="px-4 py-2 flex items-center justify-between border-b border-white/5 bg-black/20 overflow-x-auto gap-2">
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 flex items-center gap-1">
-            <Compass className="w-3 h-3 text-amber-500" /> Presets:
-          </span>
-          {presets.map((p) => {
-            const Icon = p.icon;
-            return (
-              <button
-                key={p.id}
-                onClick={() => handlePresetSelect(p)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium border transition-all cursor-pointer ${p.color}`}
-              >
-                <Icon className="w-3 h-3" />
-                <span>{p.label}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Global Demo Trigger */}
-        <button
-          onClick={handleDemo}
-          className="flex items-center gap-1.5 px-3 py-1 rounded-md text-[11px] font-bold tracking-wider bg-gradient-to-r from-amber-500/20 via-amber-400/20 to-amber-500/20 text-amber-300 border border-amber-500/40 hover:border-amber-400 hover:scale-105 active:scale-95 transition-all shadow-sm"
-        >
-          <Sparkles className="w-3 h-3 text-amber-400 animate-spin" style={{ animationDuration: '4s' }} />
-          <span>⚡ RUN DEMO PIPELINE</span>
-        </button>
-      </div>
 
       {/* Attachments preview row */}
       {attachments.length > 0 && (
@@ -254,6 +184,16 @@ export function CommandBar() {
 
           {/* Action buttons */}
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleDemo}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold tracking-wider bg-gradient-to-r from-amber-500/20 via-amber-400/20 to-amber-500/20 text-amber-300 border border-amber-500/40 hover:border-amber-400 hover:scale-105 active:scale-95 transition-all shadow-sm cursor-pointer"
+              title="Automated end-to-end mission verification pipeline"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-spin" style={{ animationDuration: '4s' }} />
+              <span className="hidden sm:inline">DEMO PIPELINE</span>
+              <span className="sm:hidden">DEMO</span>
+            </button>
+
             <button
               onClick={() => setPreviewMode(!previewMode)}
               className={`px-3 py-2 rounded-lg text-xs font-mono font-medium border transition-all cursor-pointer ${
