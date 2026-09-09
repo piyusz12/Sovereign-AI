@@ -6,6 +6,7 @@
  */
 
 import { create } from 'zustand';
+import { useAppStore } from './appStore';
 
 /* ═══════════════════════════════════════════════════════════
    TYPE DEFINITIONS
@@ -102,6 +103,9 @@ export interface MissionStore {
   startReplay: (missionId: string) => void;
   stopReplay: () => void;
   setReplayStep: (step: number) => void;
+
+  // Demo
+  runDemoMission: () => void;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -299,4 +303,108 @@ export const useMissionStore = create<MissionStore>((set, get) => ({
   startReplay: (missionId) => set({ activeMissionId: missionId, isReplayMode: true, replayStep: 0 }),
   stopReplay: () => set({ isReplayMode: false, replayStep: 0 }),
   setReplayStep: (step) => set({ replayStep: step }),
+
+  /* ─── Demo Mission ─── */
+  runDemoMission: () => {
+    const store = get();
+    const mission = store.createMission(
+      'Analyze inspection_report.pdf and prepare an approval note using the relevant internal SOP.',
+      'document',
+      ['inspection_report.pdf']
+    );
+
+    const missionId = mission.id;
+    const steps = mission.pipeline;
+    const delay = 300;
+
+    // Start executing
+    setTimeout(() => {
+      store.updateMissionStatus(missionId, 'executing');
+      store.addTraceEntry(missionId, 'Mission execution started');
+      useAppStore.getState().updateRouting({
+        task_type: 'Document Reasoning',
+        selected_model: 'Qwen3-14B',
+        reason: 'High reasoning requirement for document analysis',
+      });
+    }, 200);
+
+    // Progress through each pipeline step
+    steps.forEach((step, index) => {
+      const stepDelay = delay + index * 1200;
+
+      // Start step
+      setTimeout(() => {
+        const currentStore = useMissionStore.getState();
+        currentStore.updatePipelineStep(missionId, step.id, {
+          status: 'running',
+          startedAt: Date.now(),
+        });
+        currentStore.addTraceEntry(missionId, `${step.name} started`, step.description, step.id);
+      }, stepDelay);
+
+      // Complete step
+      setTimeout(() => {
+        const currentStore = useMissionStore.getState();
+        const duration = 180 + Math.random() * 600;
+        const metricsMap: Record<string, Record<string, string | number>> = {
+          'ocr': { 'pages_processed': 24, 'text_blocks': 186, 'confidence': '98.2%' },
+          'rag': { 'chunks_searched': 42, 'candidates': 8, 'retained': 4 },
+          'rerank': { 'input_docs': 8, 'output_docs': 4, 'top_score': 0.94 },
+          'reason': { 'input_tokens': 3840, 'output_tokens': 1206, 'model': 'Qwen3-14B' },
+          'verify': { 'claims_checked': 6, 'verified': 6, 'confidence': '0.94' },
+          'ingest': { 'file_size': '2.4 MB', 'format': 'PDF', 'pages': 24 },
+          'understand': { 'task_type': 'document_reasoning', 'complexity': 'high' },
+          'output': { 'format': 'DOCX', 'sections': 4, 'size': '186 KB' },
+        };
+
+        currentStore.updatePipelineStep(missionId, step.id, {
+          status: 'verified',
+          completedAt: Date.now(),
+          duration_ms: Math.round(duration),
+          metrics: metricsMap[step.id] || { 'status': 'complete' },
+        });
+        currentStore.addTraceEntry(
+          missionId,
+          `${step.name} verified`,
+          `${Math.round(duration)}ms`,
+          step.id
+        );
+
+        // Add evidence after reasoning step
+        if (step.id === 'reason') {
+          currentStore.addEvidence(missionId, {
+            id: 'ev-1',
+            claim: 'Valve V-204 requires immediate replacement due to corrosion exceeding allowable limits.',
+            confidence: 0.94,
+            sources: [
+              { title: 'Inspection Report', location: 'Page 18, Section 4.2', snippet: 'Corrosion depth measured at 3.2mm, exceeding the 2.5mm threshold per ASME B31.3' },
+              { title: 'SOP-204', location: 'Section 5.2', snippet: 'Valves exceeding corrosion allowance must be scheduled for replacement within 30 days' },
+              { title: 'Maintenance Record MR-4421', location: 'Entry 2024-08-15', snippet: 'Previous inspection noted early-stage pitting on V-204 body' },
+            ],
+          });
+          currentStore.addEvidence(missionId, {
+            id: 'ev-2',
+            claim: 'Pressure relief system PSV-108 is within certification validity.',
+            confidence: 0.97,
+            sources: [
+              { title: 'Inspection Report', location: 'Page 22, Section 5.1', snippet: 'PSV-108 last certified 2024-03-12, valid until 2025-03-12' },
+              { title: 'SOP-108', location: 'Section 3.1', snippet: 'Annual PSV certification required per API 510' },
+            ],
+          });
+        }
+      }, stepDelay + 800);
+    });
+
+    // Complete mission
+    const totalDelay = delay + steps.length * 1200 + 400;
+    setTimeout(() => {
+      const currentStore = useMissionStore.getState();
+      currentStore.completeMission(missionId, {
+        type: 'DOCX',
+        filename: 'Approval_Note_V204_Inspection.docx',
+        content: 'Approval note generated with 6 verified findings and SOP cross-references.',
+      });
+      currentStore.addTraceEntry(missionId, 'Mission completed', 'DOCX generated successfully');
+    }, totalDelay);
+  },
 }));
