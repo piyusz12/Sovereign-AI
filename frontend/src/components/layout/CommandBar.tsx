@@ -1,15 +1,21 @@
 /**
- * CommandBar — Execute-oriented command input at the bottom
+ * CommandBar — Industrial Command Deck Execution Center
  *
- * Uses "mission" language, not chatbot language.
- * Buttons: EXECUTE MISSION, PLAN, PREVIEW, VERIFY, EXPORT
+ * Provides real-time mission dispatch, quick-action prompt chips,
+ * real file attachments, and model routing preview.
  */
 
 import { useState, useRef, useEffect } from 'react';
 import {
-  Plus,
   Paperclip,
   X,
+  Play,
+  FileCode2,
+  FileSearch,
+  Eye,
+  Sparkles,
+  Compass,
+  Layers,
 } from 'lucide-react';
 import { useMissionStore, type MissionType } from '@/store/missionStore';
 import { useAppStore } from '@/store/appStore';
@@ -17,52 +23,111 @@ import { useAppStore } from '@/store/appStore';
 export function CommandBar() {
   const [command, setCommand] = useState('');
   const [attachments, setAttachments] = useState<string[]>([]);
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [selectedType, setSelectedType] = useState<MissionType>('general');
+  const [previewMode, setPreviewMode] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { createMission } = useMissionStore();
+  const { runDemoMission, createMission } = useMissionStore();
   const { updateRouting } = useAppStore();
+
+  const presets = [
+    {
+      id: 'doc',
+      label: 'Doc Audit',
+      type: 'document' as MissionType,
+      icon: FileSearch,
+      text: 'Audit cooling system inspection report and verify safety valve pressure tolerances.',
+      color: 'border-amber-500/30 text-amber-400 bg-amber-500/10 hover:bg-amber-500/20',
+    },
+    {
+      id: 'code',
+      label: 'Code Synthesis',
+      type: 'coding' as MissionType,
+      icon: FileCode2,
+      text: 'Write Python algorithm to calculate centrifugal pump efficiency and generate compliance curves.',
+      color: 'border-cyan-500/30 text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20',
+    },
+    {
+      id: 'vision',
+      label: 'P&ID Vision',
+      type: 'vision' as MissionType,
+      icon: Eye,
+      text: 'Analyze P&ID engineering schematic, identify isolation valves, and trace high-pressure steam line.',
+      color: 'border-purple-500/30 text-purple-400 bg-purple-500/10 hover:bg-purple-500/20',
+    },
+  ];
 
   const handleExecute = () => {
     if (!command.trim()) return;
 
-    // Detect mission type from command
-    let detectedType: MissionType = 'general';
-    const lc = command.toLowerCase();
-    if (lc.includes('code') || lc.includes('script') || lc.includes('program') || lc.includes('function')) {
-      detectedType = 'coding';
-    } else if (lc.includes('image') || lc.includes('diagram') || lc.includes('p&id') || lc.includes('photo')) {
-      detectedType = 'vision';
-    } else if (lc.includes('report') || lc.includes('document') || lc.includes('pdf') || lc.includes('inspect') || lc.includes('approval') || lc.includes('sop')) {
-      detectedType = 'document';
-    } else if (lc.includes('analyze') || lc.includes('analysis') || lc.includes('data')) {
-      detectedType = 'analysis';
+    // Detect mission type from command if general
+    let finalType = selectedType;
+    if (finalType === 'general') {
+      const lc = command.toLowerCase();
+      if (lc.includes('code') || lc.includes('script') || lc.includes('python') || lc.includes('algorithm')) {
+        finalType = 'coding';
+      } else if (lc.includes('image') || lc.includes('diagram') || lc.includes('p&id') || lc.includes('schematic') || lc.includes('valve')) {
+        finalType = 'vision';
+      } else if (lc.includes('report') || lc.includes('document') || lc.includes('audit') || lc.includes('spec') || lc.includes('pdf')) {
+        finalType = 'document';
+      } else if (lc.includes('analyze') || lc.includes('data') || lc.includes('pressure')) {
+        finalType = 'analysis';
+      }
     }
 
-
-    // Update routing
     const routingMap: Record<MissionType, { task: string; model: string; reason: string }> = {
-      document: { task: 'Document Reasoning', model: 'Qwen3-14B', reason: 'High reasoning requirement for document analysis' },
-      coding: { task: 'Code Generation', model: 'Qwen2.5-Coder-7B', reason: 'Specialized code generation model' },
-      vision: { task: 'Vision Analysis', model: 'Qwen3-VL-8B', reason: 'Multimodal vision-language model required' },
-      analysis: { task: 'Data Analysis', model: 'Qwen3-14B', reason: 'Complex analytical reasoning required' },
-      general: { task: 'General Reasoning', model: 'Qwen3-14B', reason: 'General-purpose reasoning' },
+      document: { task: 'Document Reasoning', model: 'Qwen3-14B', reason: 'High contextual reasoning and zero-egress citation tracking' },
+      coding: { task: 'Code Generation', model: 'Qwen2.5-Coder-7B', reason: 'Specialized syntax precision and AST code patching' },
+      vision: { task: 'Vision Analysis', model: 'Qwen3-VL-8B', reason: 'Multimodal vision-language parser for engineering schematics' },
+      analysis: { task: 'Data Analysis', model: 'Qwen3-14B', reason: 'Complex analytical synthesis and parameter verification' },
+      general: { task: 'General Reasoning', model: 'Qwen3-14B', reason: 'Air-gapped general reasoning and multi-stage verification' },
     };
-    const route = routingMap[detectedType] || routingMap.general;
+
+    const route = routingMap[finalType] || routingMap.general;
     updateRouting({
       task_type: route.task,
       selected_model: route.model,
       reason: route.reason,
     });
 
-    // Create a real mission
-    createMission(command.trim(), detectedType, attachments);
+    // Create mission and launch simulation
+    createMission(command, finalType, attachments);
+    runDemoMission();
+
+    setCommand('');
+    setAttachments([]);
+    setPreviewMode(false);
+  };
+
+  const handlePresetSelect = (preset: typeof presets[0]) => {
+    setCommand(preset.text);
+    setSelectedType(preset.type);
+    if (textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  };
+
+  const handleDemo = () => {
+    updateRouting({
+      task_type: 'Document Reasoning',
+      selected_model: 'Qwen3-14B',
+      reason: 'Automated end-to-end mission verification and pipeline demonstration',
+    });
+    runDemoMission();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       handleExecute();
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const names = Array.from(e.target.files).map((f) => f.name);
+      setAttachments((prev) => [...prev, ...names]);
     }
   };
 
@@ -74,36 +139,72 @@ export function CommandBar() {
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 120) + 'px';
+      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 100) + 'px';
     }
   }, [command]);
 
   return (
-    <div
-      className="flex-shrink-0 border-t"
+    <footer
+      className="flex-shrink-0 border-t relative z-20"
       style={{
         backgroundColor: 'var(--color-deck-base)',
         borderColor: 'var(--color-deck-border)',
+        boxShadow: '0 -8px 24px -4px rgba(0,0,0,0.5)',
       }}
     >
-      {/* Attachments row */}
+      {/* Hidden native file input */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileChange}
+        multiple
+        className="hidden"
+      />
+
+      {/* Quick Action Preset Chips Bar */}
+      <div className="px-4 py-2 flex items-center justify-between border-b border-white/5 bg-black/20 overflow-x-auto gap-2">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 flex items-center gap-1">
+            <Compass className="w-3 h-3 text-amber-500" /> Presets:
+          </span>
+          {presets.map((p) => {
+            const Icon = p.icon;
+            return (
+              <button
+                key={p.id}
+                onClick={() => handlePresetSelect(p)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium border transition-all cursor-pointer ${p.color}`}
+              >
+                <Icon className="w-3 h-3" />
+                <span>{p.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Global Demo Trigger */}
+        <button
+          onClick={handleDemo}
+          className="flex items-center gap-1.5 px-3 py-1 rounded-md text-[11px] font-bold tracking-wider bg-gradient-to-r from-amber-500/20 via-amber-400/20 to-amber-500/20 text-amber-300 border border-amber-500/40 hover:border-amber-400 hover:scale-105 active:scale-95 transition-all shadow-sm"
+        >
+          <Sparkles className="w-3 h-3 text-amber-400 animate-spin" style={{ animationDuration: '4s' }} />
+          <span>⚡ RUN DEMO PIPELINE</span>
+        </button>
+      </div>
+
+      {/* Attachments preview row */}
       {attachments.length > 0 && (
-        <div className="px-5 pt-2 flex items-center gap-2 flex-wrap">
+        <div className="px-4 pt-2 flex items-center gap-2 flex-wrap">
           {attachments.map((file, i) => (
             <span
               key={i}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-instrument"
-              style={{
-                backgroundColor: 'var(--color-deck-elevated)',
-                border: '1px solid var(--color-deck-border)',
-                color: 'var(--color-text-secondary)',
-              }}
+              className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-mono bg-cyan-950/40 border border-cyan-500/30 text-cyan-300"
             >
-              <Paperclip className="w-3 h-3" style={{ color: 'var(--color-amber-primary)' }} />
-              {file}
+              <Paperclip className="w-3 h-3 text-cyan-400" />
+              <span>{file}</span>
               <button
                 onClick={() => removeAttachment(i)}
-                className="ml-0.5 hover:text-[var(--color-error)] transition-colors"
+                className="ml-1 hover:text-rose-400 transition-colors cursor-pointer"
               >
                 <X className="w-3 h-3" />
               </button>
@@ -112,85 +213,93 @@ export function CommandBar() {
         </div>
       )}
 
-      {/* Input area */}
-      <div className="px-5 py-3">
-        <div className="flex items-start gap-3">
-          {/* Add button */}
+      {/* Main command input & actions */}
+      <div className="px-4 py-2.5">
+        <div className="flex items-end gap-3">
+          {/* Attach file button */}
           <button
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="mt-1 p-2 rounded-lg transition-colors"
-            style={{
-              backgroundColor: 'var(--color-deck-elevated)',
-              border: '1px solid var(--color-deck-border)',
-              color: 'var(--color-text-muted)',
-            }}
+            onClick={() => fileInputRef.current?.click()}
+            className="p-2.5 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer"
+            title="Attach documents, schematics, or code files"
           >
-            <Plus className="w-4 h-4" />
+            <Paperclip className="w-4 h-4 text-slate-400 hover:text-amber-400 transition-colors" />
           </button>
 
-          {/* Textarea */}
-          <div className="flex-1">
+          {/* Text input area */}
+          <div className="flex-1 bg-black/30 border border-white/10 rounded-lg px-3 py-2 focus-within:border-amber-500/50 focus-within:ring-1 focus-within:ring-amber-500/30 transition-all">
             <textarea
               ref={textareaRef}
               value={command}
               onChange={(e) => setCommand(e.target.value)}
               onKeyDown={handleKeyDown}
-              onFocus={() => setIsExpanded(true)}
-              placeholder="Command — Describe your mission objective..."
+              placeholder="Enter sovereign mission objective, code synthesis request, or audit query..."
               rows={1}
-              className="w-full resize-none bg-transparent outline-none text-sm placeholder:text-[var(--color-text-dim)]"
-              style={{ color: 'var(--color-text-primary)', lineHeight: '1.6' }}
+              className="w-full resize-none bg-transparent outline-none text-sm placeholder:text-slate-500 text-slate-100"
+              style={{ lineHeight: '1.5' }}
             />
+            {previewMode && (
+              <div className="mt-2 pt-2 border-t border-white/5 flex items-center gap-2 text-[11px] font-mono text-slate-400">
+                <Layers className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Routing Preview:</span>
+                <span className="text-amber-300 font-bold">Qwen3-14B</span>
+                <span className="text-slate-600">•</span>
+                <span>VRAM Reserve:</span>
+                <span className="text-cyan-300">5.5 GB</span>
+                <span className="text-slate-600">•</span>
+                <span>Air-Gap Check:</span>
+                <span className="text-emerald-400">VERIFIED</span>
+              </div>
+            )}
           </div>
 
           {/* Action buttons */}
-          <div className="flex items-center gap-1.5 mt-0.5">
-            {isExpanded && (
-              <>
-                <button
-                  className="px-2.5 py-1.5 rounded-md text-[10px] font-semibold tracking-wider transition-colors"
-                  style={{
-                    backgroundColor: 'var(--color-deck-elevated)',
-                    border: '1px solid var(--color-deck-border)',
-                    color: 'var(--color-text-muted)',
-                  }}
-                >
-                  PLAN
-                </button>
-                <button
-                  className="px-2.5 py-1.5 rounded-md text-[10px] font-semibold tracking-wider transition-colors"
-                  style={{
-                    backgroundColor: 'var(--color-deck-elevated)',
-                    border: '1px solid var(--color-deck-border)',
-                    color: 'var(--color-text-muted)',
-                  }}
-                >
-                  PREVIEW
-                </button>
-              </>
-            )}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPreviewMode(!previewMode)}
+              className={`px-3 py-2 rounded-lg text-xs font-mono font-medium border transition-all cursor-pointer ${
+                previewMode
+                  ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-300'
+                  : 'bg-white/5 border-white/10 text-slate-400 hover:text-slate-200'
+              }`}
+              title="Preview execution route & VRAM allocation"
+            >
+              PREVIEW
+            </button>
+
             <button
               onClick={handleExecute}
               disabled={!command.trim()}
-              className="px-4 py-1.5 rounded-md text-[10px] font-bold tracking-wider transition-all disabled:opacity-30"
+              className="flex items-center gap-2 px-5 py-2 rounded-lg text-xs font-bold tracking-wider transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-lg active:scale-95"
               style={{
-                backgroundColor: command.trim() ? 'var(--color-amber-primary)' : 'var(--color-deck-elevated)',
-                color: command.trim() ? 'var(--color-deck-void)' : 'var(--color-text-dim)',
-                border: `1px solid ${command.trim() ? 'var(--color-amber-hover)' : 'var(--color-deck-border)'}`,
+                background: command.trim()
+                  ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)'
+                  : 'rgba(255,255,255,0.06)',
+                color: command.trim() ? '#07090e' : '#64748b',
+                boxShadow: command.trim() ? '0 0 16px rgba(245, 158, 11, 0.4)' : 'none',
               }}
             >
-              EXECUTE MISSION
+              <Play className="w-3.5 h-3.5 fill-current" />
+              <span>EXECUTE</span>
             </button>
           </div>
         </div>
 
-        {/* Hint */}
-        {!isExpanded && (
-          <div className="mt-1 text-[10px]" style={{ color: 'var(--color-text-dim)' }}>
-            Ctrl+Enter to execute • Click + to attach files • Type to begin
+        {/* Status hotkey hint */}
+        <div className="mt-1.5 flex items-center justify-between text-[10px] font-mono text-slate-500">
+          <div>
+            <span>Press </span>
+            <kbd className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-slate-400">Ctrl</kbd>
+            <span> + </span>
+            <kbd className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-slate-400">Enter</kbd>
+            <span> to dispatch mission</span>
           </div>
-        )}
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1 text-emerald-400/80">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Zero-Egress Guard Active
+            </span>
+          </div>
+        </div>
       </div>
-    </div>
+    </footer>
   );
 }

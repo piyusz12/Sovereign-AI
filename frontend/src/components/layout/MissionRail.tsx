@@ -18,6 +18,8 @@ import {
   ClipboardCheck,
   BarChart3,
   BookOpen,
+  FileStack,
+  FolderKanban,
   ChevronLeft,
   ChevronRight,
   Play,
@@ -575,6 +577,39 @@ export function MissionRail() {
                 ACTIVE
               </span>
             </button>
+          </div>
+        </div>
+
+        {/* ═══════════════════════════════════════════════════════════
+            KNOWLEDGE REPOSITORY
+            ═══════════════════════════════════════════════════════════ */}
+        <div>
+          <h3 className="font-label mb-2 px-1 text-slate-400">KNOWLEDGE REPOSITORY</h3>
+          <div className="space-y-1">
+            {[
+              { icon: BookOpen, label: 'SOPs & Standards', count: '48' },
+              { icon: FileStack, label: 'Technical Manuals', count: '32' },
+              { icon: FileText, label: 'Audit Reports', count: '29' },
+              { icon: FolderKanban, label: 'Plant Schematics', count: '19' },
+            ].map(({ icon: Icon, label, count }) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => {
+                  setActiveView('trust');
+                }}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-all text-slate-300 hover:bg-slate-800/80 hover:text-amber-300 cursor-pointer group"
+                title={`Open ${label} in Trust Center`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Icon className="w-3.5 h-3.5 text-slate-400 group-hover:text-amber-400 transition-colors" />
+                  <span>{label}</span>
+                </div>
+                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 group-hover:text-amber-300 border border-white/5">
+                  {count}
+                </span>
+              </button>
+            ))}
           </div>
         </div>
 
