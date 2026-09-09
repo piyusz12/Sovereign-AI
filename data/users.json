@@ -201,5 +201,12 @@
     "role": "hr",
     "department": "hr",
     "disabled": false
+  },
+  {
+    "username": "engineer2",
+    "hashed_password": "$2b$12$7r7A.TCSDC8HuKYjBIJa2e8gB9b2bisJMSl1ahZxvOirrz9/ihWLS",
+    "role": "admin",
+    "department": "all",
+    "disabled": false
   }
 ]

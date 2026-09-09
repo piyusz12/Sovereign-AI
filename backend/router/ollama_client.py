@@ -438,6 +438,21 @@ class OllamaClient:
                             )
                     except Exception as fallback_err:
                         logger.debug("Automatic model fallback failed: %s", fallback_err)
+
+                # Clarify 404 / missing model error
+                err_detail = ""
+                try:
+                    err_json = e.response.json()
+                    err_detail = err_json.get("error", "")
+                except Exception:
+                    err_detail = e.response.text
+
+                if e.response.status_code == 404 or "not found" in err_detail.lower():
+                    raise RuntimeError(
+                        f"Model '{model}' is not installed in Ollama. "
+                        f"Please run 'ollama pull {model}' in your terminal to download it."
+                    ) from e
+
                 logger.error("Ollama HTTP error: %s", e)
                 raise
             except Exception as e:
@@ -504,6 +519,21 @@ class OllamaClient:
                     f"Ollama not running at {self.base_url}. "
                     "Start with 'ollama serve' or check Docker."
                 )
+            except httpx.HTTPStatusError as e:
+                err_detail = ""
+                try:
+                    err_json = e.response.json()
+                    err_detail = err_json.get("error", "")
+                except Exception:
+                    err_detail = e.response.text
+
+                if e.response.status_code == 404 or "not found" in err_detail.lower():
+                    raise RuntimeError(
+                        f"Model '{model}' is not installed in Ollama. "
+                        f"Please run 'ollama pull {model}' in your terminal to download it."
+                    ) from e
+                logger.error("Ollama streaming HTTP error: %s", e)
+                raise
 
     # ── Inference — Generate (raw) ────────────────────────────────────────
 
@@ -533,19 +563,34 @@ class OllamaClient:
             payload["system"] = system
 
         async with self._client(INFERENCE_TIMEOUT) as client:
-            resp = await client.post("/api/generate", json=payload)
-            resp.raise_for_status()
-            data = resp.json()
+            try:
+                resp = await client.post("/api/generate", json=payload)
+                resp.raise_for_status()
+                data = resp.json()
 
-            return GenerateResponse(
-                response=data.get("response", ""),
-                model=data.get("model", model),
-                total_duration_ns=data.get("total_duration", 0),
-                eval_count=data.get("eval_count", 0),
-                eval_duration_ns=data.get("eval_duration", 0),
-                prompt_eval_duration_ns=data.get("prompt_eval_duration", 0),
-                done=data.get("done", True),
-            )
+                return GenerateResponse(
+                    response=data.get("response", ""),
+                    model=data.get("model", model),
+                    total_duration_ns=data.get("total_duration", 0),
+                    eval_count=data.get("eval_count", 0),
+                    eval_duration_ns=data.get("eval_duration", 0),
+                    prompt_eval_duration_ns=data.get("prompt_eval_duration", 0),
+                    done=data.get("done", True),
+                )
+            except httpx.HTTPStatusError as e:
+                err_detail = ""
+                try:
+                    err_json = e.response.json()
+                    err_detail = err_json.get("error", "")
+                except Exception:
+                    err_detail = e.response.text
+
+                if e.response.status_code == 404 or "not found" in err_detail.lower():
+                    raise RuntimeError(
+                        f"Model '{model}' is not installed in Ollama. "
+                        f"Please run 'ollama pull {model}' in your terminal to download it."
+                    ) from e
+                raise
 
     # ── Health Check ──────────────────────────────────────────────────────
 
