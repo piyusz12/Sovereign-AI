@@ -528,7 +528,7 @@ class OllamaClient:
             # Check if this error is due to model mismatch / not found / vision unsupported
             # Ollama may return 404 OR 500 ("model '...' does not support images" or "model not found")
             should_try_fallback = (
-                e.response.status_code == 404
+                e.response.status_code in (404, 500)
                 or "not found" in err_detail.lower()
                 or "does not support images" in err_detail.lower()
                 or "multimodal" in err_detail.lower()

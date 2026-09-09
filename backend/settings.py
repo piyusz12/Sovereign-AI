@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     ollama_reasoning_model: str = "qwen3:14b"
     ollama_coding_model: str = "qwen2.5-coder:7b"
-    ollama_vision_model: str = "qwen3-vl:8b"
+    ollama_vision_model: str = "qwen2.5-vl:7b"
 
     # --- Local inference performance profile (RTX 4060 Laptop, 8 GB VRAM) ---
     # Keep one heavy model active, reserve output/KV capacity, and avoid

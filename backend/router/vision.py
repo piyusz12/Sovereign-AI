@@ -183,6 +183,15 @@ async def _ensure_vision_model_loaded() -> str:
     Returns the actual model_id to use for inference.
     """
     from backend.router.model_registry import model_registry
+    from backend.router.ollama_client import ollama_client
+
+    # Attempt dynamic detection to use whichever vision model is installed
+    try:
+        resolved = await ollama_client.resolve_model_name("vision")
+        if resolved:
+            return resolved
+    except Exception as resolve_err:
+        logger.debug("Ollama vision model auto-resolution skipped: %s", resolve_err)
 
     try:
         model_config = await model_registry.load_model("vision")

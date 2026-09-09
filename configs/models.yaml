@@ -27,13 +27,13 @@ models:
     priority: 2
 
   vision:
-    name: "Qwen3-VL-8B"
+    name: "Qwen2.5-VL-7B"
     provider: "ollama"
-    model_id: "qwen3-vl:8b"
+    model_id: "qwen2.5-vl:7b"
     category: "vision"
     quantization: "4-bit"
     context_length: 8192
-    vram_required_mb: 6000
+    vram_required_mb: 5200
     is_heavy: true
     priority: 3
 
