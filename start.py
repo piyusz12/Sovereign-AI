@@ -20,6 +20,8 @@ def main():
         host=settings.app_host,
         port=settings.app_port,
         reload=settings.debug,
+        reload_dirs=["backend"],
+        reload_excludes=["data/*", "data/**", "*.db", "*.jsonl", "*.log", "data/audit/*"],
         log_level=settings.log_level.lower(),
     )
 
