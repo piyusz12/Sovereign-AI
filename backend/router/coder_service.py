@@ -1,19 +1,31 @@
 """
 Sovereign AI Workbench — Coder Service Bridge
-"""
-from typing import Optional
-from dataclasses import dataclass
 
-from backend.models import route_task, RoutingRequest, TaskType
-from backend.model_gateway import model_gateway, GatewayInferenceRequest, ChatMessage
+Provides a slim generate_code() function used by the coding agent's planner
+and repair loop.  Delegates to the primary model router so that every code
+generation request participates in VRAM discipline, GPU scheduling, and
+telemetry.
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
+from typing import Optional
+
+logger = logging.getLogger("sovereign.coder_service")
+
 
 class CoderServiceError(RuntimeError):
     """Raised when code generation fails."""
     pass
 
+
 @dataclass
 class CodeGenerationResult:
+    """Minimal result returned to callers (planner, repair loop)."""
     code: str
+
 
 async def generate_code(
     task_description: str,
@@ -21,8 +33,15 @@ async def generate_code(
     error_output: Optional[str] = None,
 ) -> CodeGenerationResult:
     """
-    Generate or repair Python code using the new Phase 27 Model Router.
+    Generate or repair Python code via the primary model router.
+
+    The router handles model loading, VRAM management, and Ollama
+    communication.  This function adds repair context when supplied
+    and extracts the first code block from the model response.
     """
+    # Lazy import to avoid circular imports at module load time.
+    from backend.router.router import model_router
+
     context = ""
     if prior_code or error_output:
         context = "You are repairing broken code.\n"
@@ -31,37 +50,30 @@ async def generate_code(
         if error_output:
             context += f"Error Output:\n```text\n{error_output}\n```\n"
 
+    prompt = f"{context}\n\nTask: {task_description}" if context else task_description
+
     try:
-        # Phase 27: Ask the Model Router for a CODING model
-        route = route_task(RoutingRequest(task_type=TaskType.CODING))
-        
-        request = GatewayInferenceRequest(
-            model=route.selected_model,
-            messages=[
-                ChatMessage(role="system", content="You are a coding agent. Always return output enclosed in ```python code blocks."),
-                ChatMessage(role="user", content=f"{context}\n\nTask: {task_description}")
-            ],
-            temperature=0.3
+        result = await model_router.generate_code(
+            prompt=prompt,
+            language="python",
+            temperature=0.3,
+            max_tokens=4096,
         )
-        
-        # We generate the text using the selected model
-        response = await model_gateway.generate(request)
-        response_text = response.content
-        
-        # Simple extraction of the code block
-        if "```python" in response_text:
-            code = response_text.split("```python")[1].split("```")[0].strip()
-        elif "```" in response_text:
-            code = response_text.split("```")[1].split("```")[0].strip()
-        else:
-            code = response_text.strip()
-            
+
+        if not result.success:
+            raise CoderServiceError(
+                result.error or "Code generation returned no code blocks."
+            )
+
+        code = result.primary_code
         if not code:
-            raise CoderServiceError("Failed to extract code blocks from output.")
-            
+            raise CoderServiceError(
+                "Model responded but no executable code block was extracted."
+            )
+
         return CodeGenerationResult(code=code)
 
+    except CoderServiceError:
+        raise
     except Exception as e:
-        if isinstance(e, CoderServiceError):
-            raise
-        raise CoderServiceError(f"Model generation failed: {e}")
+        raise CoderServiceError(f"Model generation failed: {e}") from e

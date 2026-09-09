@@ -252,3 +252,28 @@ def get_system_prompt(task_type: str = "coding") -> str:
     if task_type == "data_analysis":
         return DATA_ANALYSIS_SYSTEM_PROMPT
     return CODING_SYSTEM_PROMPT
+
+
+async def generate_code(
+    prompt: str,
+    language: str = "python",
+    context: Optional[str] = None,
+    temperature: float = 0.3,
+    max_tokens: int = 4096,
+) -> CodeGenerationResult:
+    """
+    High-level entry point to generate code using the model router.
+
+    Routes through the primary model router to enforce single-GPU discipline,
+    extracts code blocks, and returns a structured CodeGenerationResult.
+    """
+    from backend.router.router import model_router
+
+    return await model_router.generate_code(
+        prompt=prompt,
+        language=language,
+        context=context,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+

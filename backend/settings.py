@@ -40,8 +40,8 @@ class Settings(BaseSettings):
     # --- Local inference performance profile (RTX 4060 Laptop, 8 GB VRAM) ---
     # Keep one heavy model active, reserve output/KV capacity, and avoid
     # context sizes that make the 14B reasoning model swap to system memory.
-    inference_context_tokens: int = 8192
-    inference_output_reserve_tokens: int = 1024
+    inference_context_tokens: int = 16384
+    inference_output_reserve_tokens: int = 2048
     inference_max_agent_iterations: int = 5
     inference_max_tool_calls: int = 10
     inference_keep_alive: str = "5m"

@@ -1,3 +1,10 @@
+"""
+Sovereign AI Workbench — Coding Agent Planner
+
+Generates an implementation plan (steps + affected files) for a coding task
+by asking the local coder model to produce structured JSON.
+"""
+
 import json
 import re
 from backend.router.coder_service import generate_code
@@ -7,28 +14,34 @@ from pydantic import ValidationError
 
 def _extract_json(text: str) -> str:
     """Extract the first JSON object from a model response."""
+    # Try fenced code blocks first
     fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL | re.IGNORECASE)
     if fenced:
         return fenced.group(1)
+    # Fall back to raw JSON detection
     start = text.find("{")
     end = text.rfind("}")
     if start < 0 or end <= start:
         raise ValueError("model response did not contain a JSON object")
     return text[start:end + 1]
 
+
 async def create_plan(request: str, repo_files: list[str]) -> TaskPlan:
     """
-    Given a user request and a list of repository files, generates a plan.
+    Given a user request and a list of repository files, generates a plan
+    by asking the local coder model.
     """
+    # Cap file list to avoid blowing the context window
+    files_subset = repo_files[:100]
     prompt = f"""
 You are a Software Engineering Planning Agent.
 The user wants to implement the following request: "{request}"
 
 The repository contains the following files:
-{json.dumps(repo_files, indent=2)}
+{json.dumps(files_subset, indent=2)}
 
-Create a step-by-step implementation plan. 
-Output ONLY valid JSON matching this schema:
+Create a step-by-step implementation plan.
+Output ONLY valid JSON matching this schema (no markdown, no explanation):
 {{
     "steps": ["step 1", "step 2", ...],
     "affected_files": ["app/api.py", ...]
@@ -37,7 +50,8 @@ Output ONLY valid JSON matching this schema:
     # Ask the local coding model to generate the JSON plan
     gen = await generate_code(prompt)
     try:
-        data = json.loads(_extract_json(gen.code))
+        raw_json = _extract_json(gen.code)
+        data = json.loads(raw_json)
         plan = TaskPlan(**data)
         if not plan.steps or not plan.affected_files:
             raise ValueError("plan must contain steps and affected_files")

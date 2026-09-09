@@ -102,13 +102,23 @@ class ModelRouter:
         return get_provider(model.provider.value, model.base_url)
 
     def _category_for_model(self, model_id: str) -> str:
-        """Resolve a public model ID or provider tag to its registry category."""
+        """
+        Resolve a public model ID, provider tag, or category alias to its registry category.
+
+        Supports:
+        - Direct category names: "reasoning", "coding", "vision"
+        - Full model IDs: "qwen2.5-coder:7b", "qwen3-vl:8b"
+        - Base model prefixes: "qwen2.5-coder", "qwen3-vl", "qwen3"
+        - Common aliases: "coder", "vl", "code"
+        """
         normalized = model_id.value if hasattr(model_id, "value") else str(model_id)
         normalized = normalized.strip().lower()
 
+        # 1. Exact match against category key
         if normalized in self.registry.models:
             return normalized
 
+        # 2. Exact match against model_id, name, or cleaned name
         for category, model in self.registry.models.items():
             if normalized in {
                 model.model_id.lower(),
@@ -117,7 +127,28 @@ class ModelRouter:
             }:
                 return category
 
-        raise ValueError(f"Unknown model: {model_id}")
+        # 3. Base model tag match (e.g., 'qwen2.5-coder' matching 'qwen2.5-coder:7b')
+        base_normalized = normalized.split(":")[0]
+        for category, model in self.registry.models.items():
+            model_base = model.model_id.lower().split(":")[0]
+            if base_normalized == model_base or normalized == model_base:
+                return category
+
+        # 4. Keyword heuristic fallback
+        if any(kw in normalized for kw in ("coder", "code", "coding")):
+            if "coding" in self.registry.models:
+                return "coding"
+        if any(kw in normalized for kw in ("vision", "vl", "visual", "image")):
+            if "vision" in self.registry.models:
+                return "vision"
+        if any(kw in normalized for kw in ("reason", "chat", "general")):
+            if "reasoning" in self.registry.models:
+                return "reasoning"
+
+        raise ValueError(
+            f"Unknown model or category: '{model_id}'. "
+            f"Available categories: {list(self.registry.models.keys())}"
+        )
 
     # ── Classify Only (Phase 6) ───────────────────────────────────────────
 
@@ -565,8 +596,30 @@ class ModelRouter:
         """
         start = time.time()
 
-        # Validate images input
+        # Validate and sanitize images input
         if not images or all(not img.strip() for img in images):
+            return VisionResult(
+                content="",
+                model_used="",
+                duration_ms=0.0,
+                success=False,
+                error="No valid images provided for vision analysis.",
+            )
+
+        from backend.router.vision import clean_base64_image, _compress_image
+
+        sanitized_images: list[str] = []
+        for raw_img in images:
+            if not raw_img or not raw_img.strip():
+                continue
+            cleaned = clean_base64_image(raw_img)
+            try:
+                compressed = _compress_image(cleaned)
+                sanitized_images.append(compressed)
+            except Exception:
+                sanitized_images.append(cleaned)
+
+        if not sanitized_images:
             return VisionResult(
                 content="",
                 model_used="",
@@ -578,7 +631,7 @@ class ModelRouter:
         try:
             result = await self.route(
                 user_input=prompt,
-                images=images,
+                images=sanitized_images,
                 force_model="vision",
                 system_prompt=get_vision_system_prompt(),
                 temperature=temperature,
@@ -765,12 +818,21 @@ class ModelRouter:
         images: Optional[list[str]] = None,
     ) -> PromptBuild:
         """Build a stable static prefix and context-bounded dynamic suffix."""
+        cleaned_images: Optional[list[str]] = None
+        if images:
+            from backend.router.vision import clean_base64_image
+            cleaned_images = [
+                cleaned
+                for img in images
+                if (cleaned := clean_base64_image(img))
+            ] or None
+
         history = self.sessions.get_history(session_id) if session_id else []
         return self.context_budgeter.build_messages(
             system_prompt=system_prompt,
             user_request=user_input,
             history=history,
-            images=images,
+            images=cleaned_images,
         )
 
 

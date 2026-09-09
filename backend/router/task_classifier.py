@@ -80,32 +80,40 @@ TASK_TYPE_TO_CATEGORY = {
 
 CODING_PATTERNS: list[tuple[str, float]] = [
     # Explicit language mentions — strong signal (weight 2.0)
-    (r"\b(python|javascript|typescript|java|c\+\+|rust|sql|bash|golang|ruby)\b", 2.0),
+    (r"\b(python|javascript|typescript|java|c\+\+|rust|sql|bash|golang|ruby|c#|kotlin|swift|scala|php|perl|lua|r\b)", 2.0),
     # Explicit code verbs — strong signal
-    (r"\b(write|create|generate|build|implement|develop)\b.*\b(code|function|class|script|program|algorithm|api|module)\b", 2.0),
-    # Debug/fix code — strong signal
-    (r"\b(debug|fix|refactor|optimize)\b.*\b(code|function|bug|error|exception)\b", 2.0),
+    (r"\b(write|create|generate|build|implement|develop)\b.*\b(code|function|class|script|program|algorithm|api|module|endpoint|service)\b", 2.0),
+    # Debug/fix/repair code — strong signal
+    (r"\b(debug|fix|refactor|optimize|repair|patch|resolve)\b.*\b(code|function|bug|error|exception|crash|issue)\b", 2.0),
+    # Direct repair / fix request (even without 'code' qualifier)
+    (r"\b(fix|repair|debug|patch)\b.*\b(this|the|my|a)\b", 1.5),
     # Code artifacts
-    (r"\b(csv|json|xml|yaml|dataframe|pandas|numpy|matplotlib)\b", 1.5),
+    (r"\b(csv|json|xml|yaml|dataframe|pandas|numpy|matplotlib|pytorch|tensorflow)\b", 1.5),
     # Computation
     (r"\b(calculate|compute|formula|equation|algorithm)\b", 1.0),
     # Code syntax in the prompt
-    (r"\bdef\b|\bclass\b|\bimport\b|\bfor\b.*\bin\b", 1.5),
+    (r"\bdef\b|\bclass\b|\bimport\b|\bfor\b.*\bin\b|\bfrom\b.*\bimport\b", 1.5),
     # Programming concepts
-    (r"\b(variable|loop|array|list|dictionary|function|method|lambda|recursion)\b", 1.0),
+    (r"\b(variable|loop|array|list|dictionary|function|method|lambda|recursion|regex|api|http|websocket)\b", 1.0),
+    # File operations
+    (r"\b(read|write|parse|serialize)\b.*\b(file|csv|json|xml|data)\b", 1.5),
 ]
 
 VISION_PATTERNS: list[tuple[str, float]] = [
     # Direct image references — strong signal
-    (r"\b(image|photo|picture|drawing|diagram|schematic|blueprint)\b", 2.0),
+    (r"\b(image|photo|picture|drawing|diagram|schematic|blueprint|screenshot|scan)\b", 2.0),
     # Engineering drawings
     (r"\b(p&id|pid|piping|instrumentation)\b", 2.0),
     # Visual analysis verbs
     (r"\b(identify|detect|recognize|find|locate|see|look|inspect)\b.*\b(in this|in the|from the)\b.*\b(image|photo|drawing|diagram|picture)\b", 2.5),
+    # "Analyze this" pattern (common user phrasing)
+    (r"\b(analyze|describe|examine|read|interpret)\b.*\b(this|the)\b.*\b(image|photo|picture|diagram|drawing|document)\b", 2.5),
     # Equipment in visual context
     (r"\b(valve|pump|pipe|vessel|tank|motor|sensor|gauge)\b.*\b(diagram|drawing|image)\b", 2.0),
     # OCR/scanning
-    (r"\b(ocr|scan|scanned)\b", 1.5),
+    (r"\b(ocr|scan|scanned|handwritten)\b", 1.5),
+    # What's in this / what do you see
+    (r"\bwhat('s|\s+is)\s+(in|on)\s+(this|the)\b", 2.0),
     # Visualization
     (r"\bvisual(ly|ize|ization)?\b", 1.0),
 ]

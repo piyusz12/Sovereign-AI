@@ -3,6 +3,10 @@ Sovereign AI Workbench — Vision Module
 
 Specialized support for multimodal tasks with Qwen3-VL-8B.
 Handles system prompts and structural formatting for image analysis tasks.
+
+The module ensures that vision inference participates in the model
+registry's single-GPU discipline — another heavy model is unloaded
+before the vision model is loaded into VRAM.
 """
 
 from __future__ import annotations
@@ -12,6 +16,7 @@ import base64
 import binascii
 import io
 import logging
+import re
 import time
 from dataclasses import dataclass
 from typing import Optional
@@ -19,14 +24,13 @@ from typing import Optional
 from PIL import Image
 
 from backend.settings import settings
-from backend.router.ollama_client import ollama_client
 
 logger = logging.getLogger("sovereign.vision")
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 MAX_IMAGE_BYTES = 20 * 1024 * 1024  # 20 MB max raw image size
-MAX_RETRIES = 2
+MAX_RETRIES = 3
 RETRY_BACKOFF_SECONDS = 1.0
 
 
@@ -88,6 +92,20 @@ def get_system_prompt(task_type: str = "vision", structured: bool = False) -> st
     return VISION_SYSTEM_PROMPT
 
 
+def clean_base64_image(image_data: str) -> str:
+    """
+    Clean and normalize a base64 image string.
+    Strips data URI prefixes (e.g. 'data:image/png;base64,') and whitespace.
+    """
+    if not image_data:
+        return ""
+    data = image_data.strip()
+    if data.startswith("data:"):
+        if "," in data:
+            data = data.split(",", 1)[1].strip()
+    return re.sub(r"\s+", "", data)
+
+
 def _validate_base64_image(image_base64: str) -> tuple[bool, str]:
     """
     Validate that image_base64 is non-empty, valid base64, and within size limits.
@@ -96,8 +114,16 @@ def _validate_base64_image(image_base64: str) -> tuple[bool, str]:
     if not image_base64 or not image_base64.strip():
         return False, "Image data is empty."
 
+    raw_str = image_base64.strip()
+    if raw_str.startswith("<svg") or "<svg" in raw_str[:120].lower():
+        return False, "SVG vector images cannot be directly processed by vision models. Please upload a PNG or JPEG raster image."
+
+    cleaned = clean_base64_image(image_base64)
+    if not cleaned:
+        return False, "Image data is empty."
+
     try:
-        raw_bytes = base64.b64decode(image_base64, validate=True)
+        raw_bytes = base64.b64decode(cleaned, validate=True)
     except (binascii.Error, ValueError) as e:
         return False, f"Invalid base64 encoding: {e}"
 
@@ -118,11 +144,12 @@ def _validate_base64_image(image_base64: str) -> tuple[bool, str]:
 def _compress_image(image_base64: str) -> str:
     """
     Compress and resize an image for vision model input.
+    Strips data URI prefixes, resizes to max 1024x1024, and re-encodes as clean JPEG.
     Raises ValueError for corrupt/undecodable images.
-    Logs a warning and returns the original for non-critical resize failures.
     """
+    cleaned = clean_base64_image(image_base64)
     try:
-        image_bytes = base64.b64decode(image_base64)
+        image_bytes = base64.b64decode(cleaned)
     except (binascii.Error, ValueError) as e:
         raise ValueError(f"Cannot decode base64 image data: {e}")
 
@@ -143,17 +170,41 @@ def _compress_image(image_base64: str) -> str:
         img.save(out, format="JPEG", quality=85)
         return base64.b64encode(out.getvalue()).decode("utf-8")
     except Exception as e:
-        # Image is valid but resize/convert failed — use original
-        logger.warning(f"Image resize failed, using original ({img.size}): {e}")
-        return image_base64
+        # Image is valid but resize/convert failed — return cleaned base64
+        logger.warning("Image resize failed, using cleaned original (%s): %s", getattr(img, 'size', 'unknown'), e)
+        return cleaned
+
+
+async def _ensure_vision_model_loaded() -> str:
+    """
+    Ensure the vision model is loaded in VRAM through the model registry,
+    which handles unloading other heavy models as needed.
+
+    Returns the actual model_id to use for inference.
+    """
+    from backend.router.model_registry import model_registry
+
+    try:
+        model_config = await model_registry.load_model("vision")
+        return model_config.model_id
+    except Exception as e:
+        logger.warning(
+            "Failed to load vision model via registry (%s), "
+            "falling back to settings.ollama_vision_model",
+            e,
+        )
+        return settings.ollama_vision_model
 
 
 async def analyze_vision(prompt: str, image_base64: str, structured: bool = False) -> VisionResult:
     """
     Execute a vision task using Qwen3-VL-8B via Ollama.
 
-    Validates input, compresses the image, and retries once on transient errors.
+    Validates input, compresses the image, ensures the model is loaded
+    (with VRAM discipline), and retries on transient errors.
     """
+    from backend.router.ollama_client import ollama_client
+
     start_time = time.time()
 
     # ── Input Validation ──────────────────────────────────────────────────
@@ -185,6 +236,9 @@ async def analyze_vision(prompt: str, image_base64: str, structured: bool = Fals
             duration_ms=round((time.time() - start_time) * 1000, 2),
         )
 
+    # ── Load vision model (VRAM discipline) ───────────────────────────────
+    vision_model_id = await _ensure_vision_model_loaded()
+
     # ── Inference with Retry ──────────────────────────────────────────────
     messages = [
         {"role": "system", "content": get_system_prompt(structured=structured)},
@@ -195,7 +249,7 @@ async def analyze_vision(prompt: str, image_base64: str, structured: bool = Fals
     for attempt in range(1, MAX_RETRIES + 1):
         try:
             response = await ollama_client.chat(
-                model=settings.ollama_vision_model,
+                model=vision_model_id,
                 messages=messages,
                 temperature=0.1,
                 max_tokens=1024,
@@ -234,7 +288,7 @@ async def analyze_vision(prompt: str, image_base64: str, structured: bool = Fals
 
         except Exception as e:
             # Non-transient errors — fail immediately
-            logger.error(f"Vision analysis failed: {e}")
+            logger.error("Vision analysis failed: %s", e)
             return VisionResult(
                 content="",
                 success=False,

@@ -43,8 +43,11 @@ async def test_chat_completions_valid_request(monkeypatch):
             "metrics": {"eval_count": 10, "prompt_eval_count": 5}
         }
         
-    from backend.router.router import ModelRouter
+    from backend.router.router import ModelRouter, model_router
     monkeypatch.setattr(ModelRouter, "route", mock_route)
+    monkeypatch.setattr(model_router, "route", mock_route)
+    import backend.api.openai_routes as oai_routes
+    monkeypatch.setattr(oai_routes.model_router, "route", mock_route)
     
     response = client.post(
         "/v1/chat/completions",
