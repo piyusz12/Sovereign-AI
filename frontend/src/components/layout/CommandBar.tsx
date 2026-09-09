@@ -10,7 +10,6 @@ import {
   Paperclip,
   X,
   Play,
-  Sparkles,
   Layers,
 } from 'lucide-react';
 import { useMissionStore, type MissionType } from '@/store/missionStore';
@@ -67,15 +66,6 @@ export function CommandBar() {
     setCommand('');
     setAttachments([]);
     setPreviewMode(false);
-  };
-
-  const handleDemo = () => {
-    updateRouting({
-      task_type: 'Document Reasoning',
-      selected_model: 'Qwen3-14B',
-      reason: 'Automated end-to-end mission verification and pipeline demonstration',
-    });
-    runDemoMission();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -184,15 +174,6 @@ export function CommandBar() {
 
           {/* Action buttons */}
           <div className="flex items-center gap-2">
-            <button
-              onClick={handleDemo}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold tracking-wider bg-gradient-to-r from-amber-500/20 via-amber-400/20 to-amber-500/20 text-amber-300 border border-amber-500/40 hover:border-amber-400 hover:scale-105 active:scale-95 transition-all shadow-sm cursor-pointer"
-              title="Automated end-to-end mission verification pipeline"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-spin" style={{ animationDuration: '4s' }} />
-              <span className="hidden sm:inline">DEMO PIPELINE</span>
-              <span className="sm:hidden">DEMO</span>
-            </button>
 
             <button
               onClick={() => setPreviewMode(!previewMode)}
