@@ -1,12 +1,13 @@
 # ============================================
-# LiteLLM Configuration — Phase 24
+# LiteLLM Configuration — 8GB Lite Profile
 # ============================================
 # Dynamic Expertise Broker — hides backend complexity from the agent
+# All models route through Ollama on localhost
 
 model_list:
   - model_name: "sovereign-reasoning"
     litellm_params:
-      model: "ollama/qwen3:14b"
+      model: "ollama/qwen2.5-coder:7b"
       api_base: "http://localhost:11434"
 
   - model_name: "sovereign-coding"
@@ -16,7 +17,7 @@ model_list:
 
   - model_name: "sovereign-vision"
     litellm_params:
-      model: "ollama/qwen3-vl:8b"
+      model: "ollama/qwen2-vl:2b"
       api_base: "http://localhost:11434"
 
 general_settings:

@@ -35,13 +35,14 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     ollama_reasoning_model: str = "qwen3:14b"
     ollama_coding_model: str = "qwen2.5-coder:7b"
-    ollama_vision_model: str = "qwen2.5-vl:7b"
+    ollama_vision_model: str = "qwen2-vl:2b"
 
     # --- Local inference performance profile (RTX 4060 Laptop, 8 GB VRAM) ---
-    # Keep one heavy model active, reserve output/KV capacity, and avoid
-    # context sizes that make the 14B reasoning model swap to system memory.
-    inference_context_tokens: int = 16384
-    inference_output_reserve_tokens: int = 2048
+    # 8GB Lite Profile: Qwen2.5-Coder-7B (~4.7GB) as primary brain,
+    # Qwen2-VL-2B (~1.5GB) for vision. Context window kept at 8192
+    # to leave ~1.5GB for KV cache within the VRAM budget.
+    inference_context_tokens: int = 8192
+    inference_output_reserve_tokens: int = 1024
     inference_max_agent_iterations: int = 5
     inference_max_tool_calls: int = 10
     inference_keep_alive: str = "5m"
@@ -61,18 +62,23 @@ class Settings(BaseSettings):
     litellm_base_url: str = "http://localhost:4000"
     litellm_master_key: str = "sk-local-sovereign-key"
 
-    # --- Qdrant ---
+    # --- Vector Database ---
+    vector_db_backend: str = "lancedb"  # "lancedb" or "qdrant"
+    lancedb_path: str = "./data/lancedb"
+
+    # --- Qdrant (used when vector_db_backend="qdrant") ---
     qdrant_host: str = "localhost"
     qdrant_port: int = 6333
     qdrant_grpc_port: int = 6334
     qdrant_collection: str = "sovereign_documents"
 
-    # --- Embedding ---
-    embedding_model: str = "qwen3-embedding-0.6b"
-    embedding_dimension: int = 1024
+    # --- Embedding (CPU-only in Lite profile — saves VRAM for LLM) ---
+    embedding_model: str = "all-MiniLM-L6-v2"
+    embedding_dimension: int = 384
+    embedding_device: str = "cpu"
 
     # --- Reranker ---
-    reranker_model: str = "qwen3-reranker-0.6b"
+    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
     # --- Infinity (Phase 26+) ---
     infinity_base_url: str = "http://localhost:7997"

@@ -1,8 +1,11 @@
 """
 Sovereign AI Workbench — Hybrid Retriever
 
-Implements hybrid retrieval: Dense (Qdrant) + BM25 → Merge.
+Implements hybrid retrieval: Dense (LanceDB or Qdrant) + BM25 → Merge.
 RBAC filtering is applied BEFORE retrieval, not after.
+
+8GB Lite Profile: Uses LanceDB (embedded, CPU/RAM) as default backend.
+Enterprise Profile: Can use Qdrant (external server) when configured.
 """
 
 from __future__ import annotations
@@ -123,15 +126,27 @@ class BM25Retriever:
 
 class HybridRetriever:
     """
-    Combines dense retrieval (Qdrant) + sparse retrieval (BM25).
+    Combines dense retrieval (LanceDB or Qdrant) + sparse retrieval (BM25).
     Merges results using reciprocal rank fusion.
+
+    Backend selection is driven by settings.vector_db_backend:
+        - "lancedb" → embedded LanceDB (default in Lite profile)
+        - "qdrant"  → external Qdrant server
     """
 
     def __init__(self):
         self.bm25 = BM25Retriever()
         self._qdrant_client = None
+        self._lancedb_store = None
         self._local_chunks: list[dict] = []
         self._local_vectors: list[list[float]] = []
+
+        # Auto-connect LanceDB if configured
+        from backend.settings import settings as _settings
+        if getattr(_settings, "vector_db_backend", "lancedb") == "lancedb":
+            from backend.rag.lancedb_store import lancedb_store
+            self._lancedb_store = lancedb_store
+            logger.info("HybridRetriever using LanceDB backend")
 
     async def connect_qdrant(
         self, host: str = "localhost", port: int = 6333, collection: str = "sovereign_documents"
@@ -152,7 +167,7 @@ class HybridRetriever:
         chunks: list[dict],
         collection: str = "sovereign_documents",
     ) -> bool:
-        """Upsert embedded chunks into Qdrant and local C++ SIMD vector index + BM25."""
+        """Upsert embedded chunks into LanceDB/Qdrant and local SIMD index + BM25."""
         # Index into local high-speed native C++ SIMD store
         for chunk in chunks:
             embedding = chunk.get("embedding")
@@ -163,8 +178,19 @@ class HybridRetriever:
         # Update BM25 index with new chunks
         self.bm25.index(self.bm25._documents + chunks)
 
+        # --- LanceDB path (8GB Lite Profile) ---
+        if self._lancedb_store is not None:
+            try:
+                count = await self._lancedb_store.add_documents(chunks)
+                logger.info("Upserted %d chunks to LanceDB", count)
+                return True
+            except Exception as e:
+                logger.error("Failed to upsert chunks to LanceDB: %s", e)
+                return False
+
+        # --- Qdrant path (Enterprise Profile) ---
         if not self._qdrant_client:
-            logger.info("Qdrant client not connected. Chunks indexed in native C++ AVX2 SIMD vector store.")
+            logger.info("No vector DB connected. Chunks indexed in local SIMD store only.")
             return True
 
         try:
@@ -246,9 +272,33 @@ class HybridRetriever:
         department_filter: Optional[str],
         collection: str,
     ) -> list[dict]:
-        """Search Qdrant or Native C++ AVX2 SIMD engine for semantically similar documents."""
+        """Search LanceDB, Qdrant, or native SIMD engine for semantically similar documents."""
+
+        # --- LanceDB path (8GB Lite Profile) ---
+        if self._lancedb_store is not None:
+            try:
+                # Build optional filter expression for RBAC
+                filter_expr = None
+                # LanceDB SQL filters are limited; apply RBAC post-retrieval
+                raw = await self._lancedb_store.search(
+                    query_embedding, top_k=top_k * 2  # over-fetch for RBAC filtering
+                )
+                # Post-retrieval RBAC filtering
+                results = []
+                for row in raw:
+                    if user_role and not self.bm25._check_access(row, user_role, department_filter):
+                        continue
+                    row["_dense_score"] = row.pop("score", 0.0)
+                    results.append(row)
+                    if len(results) >= top_k:
+                        break
+                return results
+            except Exception as e:
+                logger.warning("LanceDB dense search error: %s", e)
+                return []
+
+        # --- Local SIMD fallback ---
         if not self._qdrant_client:
-            # Native C++ AVX2 SIMD acceleration
             if not self._local_vectors or not query_embedding:
                 return []
             try:

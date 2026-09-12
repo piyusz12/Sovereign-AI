@@ -128,6 +128,12 @@ class ModelRouter:
         if normalized in self.registry.models:
             return normalized
 
+        # Specific category-defining keywords
+        if any(kw in normalized for kw in ("coder", "coding")) and "coding" in self.registry.models:
+            return "coding"
+        if any(kw in normalized for kw in ("vision", "vl", "visual")) and "vision" in self.registry.models:
+            return "vision"
+
         # 2. Exact match against model_id, name, or cleaned name
         for category, model in self.registry.models.items():
             if normalized in {

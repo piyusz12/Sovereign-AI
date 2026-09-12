@@ -29,12 +29,12 @@ React + Vite frontend
        \          |          /
         agents + workflow registry
             |
-   RAG + Qdrant | Docker sandbox
+   RAG + LanceDB | Docker sandbox
             |
         local files and outputs
 ```
 
-The default local services are Ollama for model inference and Qdrant for vector search. LiteLLM, vLLM, and Infinity endpoints are supported through configuration when those services are available.
+The default local services are Ollama for model inference and LanceDB for vector search. Embeddings run on CPU via `sentence-transformers` to save VRAM. LiteLLM, vLLM, and Infinity endpoints are supported through configuration when those services are available. Qdrant can be used instead of LanceDB by setting `VECTOR_DB_BACKEND=qdrant`.
 
 ## Requirements
 
@@ -74,15 +74,14 @@ pip install -r requirements.txt
 From the repository root:
 
 ```bash
-docker compose -f docker/docker-compose.yml up -d ollama qdrant
+docker compose -f docker/docker-compose.yml up -d ollama
 ```
 
 Pull the models configured by the application. The defaults are:
 
 ```bash
-ollama pull qwen3:14b
 ollama pull qwen2.5-coder:7b
-ollama pull qwen3-vl:8b
+ollama pull qwen2-vl:2b
 ```
 
 ### 3. Start the backend
@@ -105,12 +104,31 @@ npm run dev -- --host 127.0.0.1 --port 3000
 
 Open `http://127.0.0.1:3000`. The backend CORS configuration currently allows the local frontend on port `3000`.
 
+### 5. (Optional) Start the LiteLLM gateway
+
+LiteLLM provides an OpenAI-compatible API gateway so your agent orchestration code doesn't need to know it's running locally:
+
+```bash
+pip install litellm
+litellm --config configs/litellm_config.yaml --port 4000
+```
+
+Your local models are now accessible at `http://localhost:4000` just like a cloud API.
+
 ### Docker-only backend
 
 To run the backend and its local dependencies together:
 
 ```bash
 docker compose -f docker/docker-compose.yml up --build
+```
+
+### Windows one-liner setup
+
+For new setups on Windows, run the Lite Profile setup script:
+
+```powershell
+.\scripts\setup_lite.ps1
 ```
 
 ## Configuration
@@ -123,27 +141,60 @@ APP_PORT=8080
 DEBUG=true
 LOG_LEVEL=INFO
 OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_REASONING_MODEL=qwen3:14b
+OLLAMA_REASONING_MODEL=qwen2.5-coder:7b
 OLLAMA_CODING_MODEL=qwen2.5-coder:7b
-OLLAMA_VISION_MODEL=qwen3-vl:8b
-QDRANT_HOST=localhost
-QDRANT_PORT=6333
+OLLAMA_VISION_MODEL=qwen2-vl:2b
+VECTOR_DB_BACKEND=lancedb
+LANCEDB_PATH=./data/lancedb
+EMBEDDING_MODEL=all-MiniLM-L6-v2
+EMBEDDING_DIMENSION=384
+EMBEDDING_DEVICE=cpu
 JWT_SECRET_KEY=replace-this-in-development
 SANDBOX_NETWORK=none
 ```
 
 Do not commit production secrets. In particular, replace the development JWT secret before exposing the API beyond a local machine.
 
-## 8 GB Performance Profile
+## 8 GB Lite Performance Profile
 
 The default serving path is direct local Ollama (which uses llama.cpp), with one
 heavy model active at once. It is tuned for interactive latency on an RTX 4060
-Laptop instead of high concurrency:
+Laptop instead of high concurrency.
 
-- Qwen3-14B, Qwen2.5-Coder-7B, and Qwen3-VL-8B are 4-bit profiles; switching a
-  task category unloads the previous heavy model.
+### VRAM Budget
+
+| Component | VRAM |
+|---|---|
+| OS / Display | ~1.0 – 1.5 GB |
+| Qwen2.5-Coder-7B (Q4_K_M) | ~4.7 GB |
+| KV Cache (8K context) | ~1.5 GB |
+| Embeddings (CPU) | 0 GB |
+| LanceDB (CPU/RAM) | 0 GB |
+| **Total** | **~7.2 – 7.7 GB** ✓ |
+
+### Model Stack
+
+| Component | Model | Footprint |
+|---|---|---|
+| Reasoning + Coding | Qwen2.5-Coder-7B (Q4_K_M) | ~4.7 GB VRAM |
+| Vision | Qwen2-VL-2B (Q4_K_M) | ~1.5 GB VRAM (loaded on demand) |
+| Embeddings | all-MiniLM-L6-v2 | ~80 MB RAM (CPU) |
+| Vector DB | LanceDB (embedded) | System RAM only |
+| API Gateway | LiteLLM | Lightweight proxy |
+
+### How it works
+
+- Qwen2.5-Coder-7B serves as the primary brain for both reasoning and code tasks;
+  switching between these categories does not require a model swap.
+- Qwen2-VL-2B is loaded only when a vision task arrives, after the 7B model is
+  unloaded — leaving ~5 GB of VRAM headroom.
 - Prompts have a deterministic static prefix and a bounded dynamic suffix. The
   default 8,192-token window reserves 1,024 tokens for generation.
+- If the KV cache exceeds available VRAM, Ollama (llama.cpp) seamlessly offloads
+  the oldest tokens to system RAM. Generation slows but does not crash.
+- Embeddings run entirely on CPU via `sentence-transformers`, using zero VRAM.
+- LanceDB stores vectors on disk and searches in CPU/RAM — no server container
+  needed.
 - GPU work is serialized, with interactive inference ahead of background work.
 - `/api/v1/models/metrics` reports local TTFT, ITL, token-rate, and scheduler
   queue telemetry without storing prompts or document text.
@@ -236,6 +287,7 @@ Runtime data is stored under `data/` and is intentionally excluded from the appl
 - `data/documents/` - uploaded source documents
 - `data/processed/` - parsed and chunked document data
 - `data/embeddings/` - embedding artifacts
+- `data/lancedb/` - LanceDB vector store (Lite profile)
 - `data/output/` - generated deliverables
 - `data/audit/` - audit log files
 

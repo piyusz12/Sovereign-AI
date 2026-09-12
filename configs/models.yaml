@@ -1,7 +1,9 @@
 # ============================================
 # Sovereign AI Workbench — Model Registry Config
 # ============================================
-# Single-GPU discipline: only ONE heavy model loaded at a time
+# 8GB Lite Profile — single-GPU discipline on RTX 4060 Laptop
+# Only ONE heavy model loaded at a time.
+# Embeddings and reranking run on CPU to save VRAM.
 
 models:
   reasoning:
@@ -10,8 +12,8 @@ models:
     model_id: "qwen3:14b"
     category: "reasoning"
     quantization: "4-bit"
-    context_length: 32768
-    vram_required_mb: 7000
+    context_length: 8192
+    vram_required_mb: 4700
     is_heavy: true
     priority: 1
 
@@ -21,51 +23,62 @@ models:
     model_id: "qwen2.5-coder:7b"
     category: "coding"
     quantization: "4-bit"
-    context_length: 16384
-    vram_required_mb: 5000
+    context_length: 8192
+    vram_required_mb: 4700
     is_heavy: true
     priority: 2
 
   vision:
-    name: "Qwen2.5-VL-7B"
+    name: "Qwen2-VL-2B"
     provider: "ollama"
-    model_id: "qwen2.5-vl:7b"
+    model_id: "qwen2-vl:2b"
     category: "vision"
     quantization: "4-bit"
-    context_length: 8192
-    vram_required_mb: 5200
+    context_length: 4096
+    vram_required_mb: 1500
     is_heavy: true
     priority: 3
 
   embedding:
-    name: "Qwen3-Embedding-0.6B"
-    provider: "ollama"
-    model_id: "qwen3-embedding:0.6b"
+    name: "all-MiniLM-L6-v2"
+    provider: "local"
+    model_id: "all-MiniLM-L6-v2"
     category: "embedding"
-    quantization: "fp16"
-    context_length: 8192
-    vram_required_mb: 800
+    quantization: "fp32"
+    context_length: 512
+    vram_required_mb: 0
     is_heavy: false
     priority: 1
+    device: "cpu"
 
   reranker:
-    name: "Qwen3-Reranker-0.6B"
-    provider: "ollama"
-    model_id: "qwen3-reranker:0.6b"
+    name: "ms-marco-MiniLM-L-6-v2"
+    provider: "local"
+    model_id: "cross-encoder/ms-marco-MiniLM-L-6-v2"
     category: "reranker"
-    quantization: "fp16"
-    context_length: 8192
-    vram_required_mb: 800
+    quantization: "fp32"
+    context_length: 512
+    vram_required_mb: 0
     is_heavy: false
     priority: 2
+    device: "cpu"
 
 gpu:
   total_vram_mb: 8192
   max_heavy_models: 1
   model: "RTX 4060 Laptop"
 
+# VRAM Budget (8GB Lite Profile):
+#   OS / Display:                ~1.0 - 1.5 GB
+#   Qwen2.5-Coder-7B (Q4_K_M):  ~4.7 GB
+#   KV Cache (8K context):       ~1.5 GB
+#   Embeddings (CPU):              0 GB
+#   LanceDB (CPU/RAM):             0 GB
+#   ----------------------------------------
+#   Total:                       ~7.2 - 7.7 GB  ✓
+
 compute:
-  mode: "hybrid_balanced" # Equal GPU + CPU computational power sharing
+  mode: "hybrid_balanced"  # Equal GPU + CPU computational power sharing
   cpu_physical_cores: 8
   cpu_logical_threads: 16
   allocated_inference_threads: 8
@@ -82,4 +95,5 @@ compute:
       - "simd_avx2_vector_search"
       - "rag_document_chunking"
       - "ast_syntax_parsing"
-
+      - "embedding_generation"
+      - "reranking"

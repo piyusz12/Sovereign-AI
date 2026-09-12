@@ -1,7 +1,8 @@
 # ============================================
 # Sovereign AI Workbench — Docker Compose
 # ============================================
-# All services run locally. No external network access.
+# 8GB Lite Profile: LanceDB is embedded (no container needed).
+# Qdrant service is commented out — uncomment for Enterprise Profile.
 # GPU access through WSL2 backend.
 
 version: "3.8"
@@ -26,18 +27,21 @@ services:
     # CRITICAL: No external network access needed after model pull
     # Models are pulled once, then served locally
 
-  # ── Qdrant — Vector Database ────────────────────────────────────
-  qdrant:
-    image: qdrant/qdrant:latest
-    container_name: sovereign-qdrant
-    ports:
-      - "127.0.0.1:6333:6333"  # REST
-      - "127.0.0.1:6334:6334"  # gRPC
-    volumes:
-      - qdrant_data:/qdrant/storage
-    environment:
-      - QDRANT__SERVICE__GRPC_PORT=6334
-    restart: unless-stopped
+  # ── Qdrant — Vector Database (Enterprise Profile only) ──────────
+  # Uncomment below if using VECTOR_DB_BACKEND=qdrant instead of LanceDB.
+  # In the 8GB Lite Profile, LanceDB runs in-process (no container needed).
+  #
+  # qdrant:
+  #   image: qdrant/qdrant:latest
+  #   container_name: sovereign-qdrant
+  #   ports:
+  #     - "127.0.0.1:6333:6333"  # REST
+  #     - "127.0.0.1:6334:6334"  # gRPC
+  #   volumes:
+  #     - qdrant_data:/qdrant/storage
+  #   environment:
+  #     - QDRANT__SERVICE__GRPC_PORT=6334
+  #   restart: unless-stopped
 
   # ── Backend API ─────────────────────────────────────────────────
   backend:
@@ -52,15 +56,15 @@ services:
       - ../configs:/app/configs
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
-      - QDRANT_HOST=qdrant
-      - QDRANT_PORT=6333
+      - VECTOR_DB_BACKEND=lancedb
+      - LANCEDB_PATH=/app/data/lancedb
     depends_on:
       - ollama
-      - qdrant
     restart: unless-stopped
 
 volumes:
   ollama_data:
     name: sovereign-ollama-data
-  qdrant_data:
-    name: sovereign-qdrant-data
+  # Uncomment if using Qdrant:
+  # qdrant_data:
+  #   name: sovereign-qdrant-data

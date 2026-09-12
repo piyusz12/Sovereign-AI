@@ -88,7 +88,10 @@ def _get_vision_system_prompt() -> str:
     return VISION_SYSTEM_PROMPT
 
 
-# ── Default Model Registry ────────────────────────────────────────────────────
+# ── Default Model Registry (8GB Lite Profile) ─────────────────────────────────
+# Qwen2.5-Coder-7B (~4.7GB) as primary brain for reasoning + coding.
+# Qwen2-VL-2B (~1.5GB) for vision — loaded on demand, swaps with reasoning.
+# Embeddings and reranking run on CPU via sentence-transformers (0 VRAM).
 
 DEFAULT_MODELS: dict[str, ModelConfig] = {
     "reasoning": ModelConfig(
@@ -98,59 +101,59 @@ DEFAULT_MODELS: dict[str, ModelConfig] = {
         category=ModelCategory.REASONING,
         quantization="4-bit",
         context_length=settings.inference_context_tokens,
-        vram_required_mb=7000,
+        vram_required_mb=4700,
         is_heavy=True,
         base_url=settings.ollama_base_url,
         keep_alive=settings.inference_keep_alive,
-        system_prompt=_REASONING_SYSTEM_PROMPT,
+        system_prompt="",  # Populated at runtime from reasoning module
     ),
     "coding": ModelConfig(
-        name="Qwen2.5-Coder-7B (Ollama)",
+        name="Qwen2.5-Coder-7B",
         provider=ModelProvider.OLLAMA,
         model_id=settings.ollama_coding_model,
         category=ModelCategory.CODING,
         quantization="4-bit",
-        context_length=16384,
-        vram_required_mb=5000,
+        context_length=settings.inference_context_tokens,
+        vram_required_mb=4700,
         is_heavy=True,
         base_url=settings.ollama_base_url,
         keep_alive=settings.inference_keep_alive,
         system_prompt="",  # Populated at runtime from coding module
     ),
     "vision": ModelConfig(
-        name="Qwen3-VL-8B (Ollama)",
+        name="Qwen2-VL-2B (Ollama)",
         provider=ModelProvider.OLLAMA,
         model_id=settings.ollama_vision_model,
         category=ModelCategory.VISION,
         quantization="4-bit",
-        context_length=8192,
-        vram_required_mb=6800,
+        context_length=4096,
+        vram_required_mb=1500,
         is_heavy=True,
         base_url=settings.ollama_base_url,
         keep_alive=settings.inference_keep_alive,
         system_prompt="",  # Populated at runtime from vision module
     ),
     "embedding": ModelConfig(
-        name="Qwen3-Embedding-0.6B",
-        provider=ModelProvider.OLLAMA,
-        model_id="qwen3-embedding:0.6b",
+        name="all-MiniLM-L6-v2 (CPU)",
+        provider=ModelProvider.LOCAL,
+        model_id=settings.embedding_model,
         category=ModelCategory.EMBEDDING,
-        quantization="fp16",
-        context_length=8192,
-        vram_required_mb=800,
-        is_heavy=False,  # Small enough to coexist
-        base_url="http://localhost:11434",
+        quantization="fp32",
+        context_length=512,
+        vram_required_mb=0,
+        is_heavy=False,
+        base_url="",  # Not applicable — runs in-process on CPU
     ),
     "reranker": ModelConfig(
-        name="Qwen3-Reranker-0.6B",
-        provider=ModelProvider.OLLAMA,
-        model_id="qwen3-reranker:0.6b",
+        name="ms-marco-MiniLM-L-6-v2 (CPU)",
+        provider=ModelProvider.LOCAL,
+        model_id=settings.reranker_model,
         category=ModelCategory.RERANKER,
-        quantization="fp16",
-        context_length=8192,
-        vram_required_mb=800,
+        quantization="fp32",
+        context_length=512,
+        vram_required_mb=0,
         is_heavy=False,
-        base_url="http://localhost:11434",
+        base_url="",  # Not applicable — runs in-process on CPU
     ),
 }
 
